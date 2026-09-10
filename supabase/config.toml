@@ -1,22 +1,50 @@
 # Local identifier only — the cloud project is selected with `supabase link --project-ref`.
+# Ports sit in 54210-54214: free of the other local Supabase stack (54321-54324)
+# and of the Windows/Hyper-V excluded ranges (54325+).
 project_id = "rotopa-erp"
-
-[db]
-major_version = 15
-
-[db.migrations]
-schema_paths = ["./migrations/*.sql"]
 
 [api]
 enabled = true
+port = 54210
 schemas = ["public"]
 extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54212
+shadow_port = 54211
+major_version = 15
+
+[db.pooler]
+enabled = false
+
+[studio]
+enabled = true
+port = 54213
+
+[inbucket]
+enabled = true
+port = 54214
+
+[storage]
+enabled = false
+
+[realtime]
+enabled = false
 
 [auth]
-enable_signup = true
+enabled = true
 site_url = "http://localhost:5173"
 additional_redirect_urls = ["http://localhost:5173"]
 jwt_expiry = 3600
+enable_signup = true
 
 [auth.email]
+enable_signup = true
 enable_confirmations = false
+
+[edge_runtime]
+enabled = false
+
+[analytics]
+enabled = false
