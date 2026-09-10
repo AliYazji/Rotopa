@@ -1,0 +1,22 @@
+# Local identifier only — the cloud project is selected with `supabase link --project-ref`.
+project_id = "rotopa-erp"
+
+[db]
+major_version = 15
+
+[db.migrations]
+schema_paths = ["./migrations/*.sql"]
+
+[api]
+enabled = true
+schemas = ["public"]
+extra_search_path = ["public", "extensions"]
+
+[auth]
+enable_signup = true
+site_url = "http://localhost:5173"
+additional_redirect_urls = ["http://localhost:5173"]
+jwt_expiry = 3600
+
+[auth.email]
+enable_confirmations = false

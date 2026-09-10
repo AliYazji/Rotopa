@@ -1,0 +1,25 @@
+# secrets / env
+.env
+.env.*
+!.env.example
+
+# node
+node_modules/
+dist/
+build/
+.vite/
+*.log
+
+# supabase local
+supabase/.branches/
+supabase/.temp/
+
+# large source backup (kept locally, not in git)
+*.bak
+
+# analysis dumps (local reference only)
+/analysis/
+
+# OS
+.DS_Store
+Thumbs.db
