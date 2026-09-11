@@ -24,6 +24,7 @@ npm run etl:accounts        # categories + accounts
 npm run etl:rates
 npm run etl:dealers
 npm run etl:inventory       # items, categories, warehouses, units
+npm run etl:opening-stock   # opening stock quantities — needs inventory
 npm run etl:opening         # opening balances — run last, needs accounts + rates
 npm run verify               # row-count + tree-integrity check vs. the legacy DB
 ```
@@ -39,7 +40,8 @@ Every step is idempotent (`on conflict do update`) — safe to re-run.
 | `accounts` | `master_acc` | `accounts` | tree by `father_acc`; `is_postable` = leaf; nature 1→credit 2→debit 3→both |
 | `rates` | `currancy_rate_tb` (wide) | `exchange_rates` (long) | one row per currency per date |
 | `dealers` | `Dealers_tb` | `dealers` | merged by `Dealer_no`; role = flags |
-| `inventory` | `ITEM_TB`, `CategoryItem_tb`, `center_tb`, `item_unit` | `items`, `item_categories`, `warehouses`, `item_units` | master data only — see below |
+| `inventory` | `ITEM_TB`, `CategoryItem_tb`, `center_tb`, `item_unit` | `items`, `item_categories`, `warehouses`, `item_units` | master data only |
+| `opening-stock` | `Item_stock_Details` (summed) | one `stock_moves` row + lines | quantities/cost only — see below |
 | `opening-balances` | `acc_trn` (summed) | one `journal_entries` row + lines | see below |
 
 ### Opening balances — how it works
@@ -95,26 +97,47 @@ clearly expenses. The step trusts `class_acc` as-is rather than guessing from
 the name or code range, so these land as ordinary balance-sheet lines —
 visible in the trial balance, easy for an accountant to spot and reclassify.
 
-### Inventory — what's migrated and what isn't
+### Inventory — items, then stock
 
 `inventory` migrates **master data only**: 3,546 items, 13 categories, 2
-warehouses (`center_tb`), 4,827 item units. It does **not** migrate stock
-quantities or history (`Item_stock_tb`/`Item_stock_Details`, 178k rows) —
-`ITEM_TB.QtyInStock` is unreliable in this backup (only 3 of 3,546 items have
-it populated), the same pattern already seen with `master_acc.BLANCE` being
-empty for accounts. Every migrated item starts with zero stock. A proper
-opening-stock migration needs the same care the accounting opening balance
-got — summing the real movement ledger, picking a cutover date, reconciling
-a variance into a dedicated account — and belongs in its own step once
-inventory is in real use, not bundled into master-data migration.
+warehouses (`center_tb`), 4,827 item units — every item starts at zero
+quantity. `ITEM_TB.QtyInStock` was not usable to seed a balance directly
+(only 3 of 3,546 items have it populated), the same pattern already seen
+with `master_acc.BLANCE` being empty for accounts.
 
 Two accounts are auto-created if missing (`INV-DEFAULT`, `COGS-DEFAULT`) and
 assigned to every tracked item, because no item in this backup has its own
 `sales_acc_no`/`Purchases_acc_no` set — review and replace them with real
 accounts from your chart before relying on inventory GL postings.
 
+`opening-stock` (run after `inventory`) sums the **real movement ledger**
+instead — `Item_stock_Details` (177,885 rows: `qty_in`/`qty_out`/`price` per
+item/store/date) — the same care the accounting opening balance got. Net
+quantity per item/warehouse, cost = the quantity-weighted average of its
+`qty_in` rows only (an out-row's `price` is a selling/issue price in this
+data, not a cost). On the real backup: **1,918 item/warehouse pairs posted**
+with real stock and a real cost basis; **1,059 had a negative net** (sold
+more historically than was ever received there — a pre-existing hole in the
+source data, not something this step can paper over) and were skipped
+entirely, logged by count. It posts quantities only, no journal entry — the
+accounting opening balance already carries whatever inventory-account value
+existed at the GL level in the legacy books; posting it again here would
+double it.
+
+**Bug worth knowing about if you write another ETL step that joins on an
+`..._no` column:** `warehouses.legacy_no` (and the other dimension tables'
+`legacy_no`) are `bigint`; `node-postgres` returns `bigint` as a *string* by
+default (to avoid precision loss), while the `mssql` driver returns the
+matching legacy column as a plain `number`. A `Map` built from one and
+looked up with the other misses on every row — silently, no error, just an
+empty result. `currencies.legacy_no`/`account_categories.legacy_no` are
+`integer` and unaffected; this bit `opening-stock` specifically (100% of
+rows "unmatched" until traced down) and is now fixed with an explicit
+`Number()` on the Postgres side.
+
 ## Not yet migrated (later phases)
 
-Stock quantities/history (see above), sales and purchase invoices (modules
-10/11 — not built yet; `stock_moves.move_type` already reserves
-`purchase_in`/`sale_out` for when they exist), payroll.
+Sales and purchase invoices — historical ones, that is; the sales module
+itself now exists (module 10) and posts *new* invoices correctly. Module 11
+(purchases) is not built yet; `stock_moves.move_type` already reserves
+`purchase_in` for when it is. Payroll.
