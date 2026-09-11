@@ -3,7 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase.ts';
 import { useOrg } from '../lib/org.tsx';
-import { fmtDate, fmtMoney, today, translateError } from '../lib/format.ts';
+import { VAT_RATE, fmtDate, fmtMoney, today, translateError } from '../lib/format.ts';
 import { ItemPicker } from '../components/ItemPicker.tsx';
 
 interface Invoice {
@@ -45,6 +45,7 @@ export default function PurchaseInvoiceDetail() {
   const [paymentMethod, setPaymentMethod] = useState<'credit' | 'cash'>('credit');
   const [cashAccountId, setCashAccountId] = useState('');
   const [desc, setDesc] = useState('');
+  const [vatAccountId, setVatAccountId] = useState('');
   const [editLines, setEditLines] = useState<EditLine[]>([]);
 
   const { data: invoice, isLoading } = useQuery({
@@ -144,7 +145,8 @@ export default function PurchaseInvoiceDetail() {
 
   async function postDraft() {
     setErr(null); setBusy(true);
-    const { error } = await supabase.rpc('post_purchase_invoice', { p_invoice_id: id });
+    if (!vatAccountId) { setBusy(false); return setErr('اختر حساب ضريبة المدخلات'); }
+    const { error } = await supabase.rpc('post_purchase_invoice', { p_invoice_id: id, p_input_vat_account_id: vatAccountId });
     setBusy(false);
     if (error) return setErr(translateError(error.message));
     await refresh();
@@ -263,7 +265,11 @@ export default function PurchaseInvoiceDetail() {
                 </tr>
               ))}
             </tbody>
-            <tfoot><tr style={{ fontWeight: 700 }}><td colSpan={3}>الإجمالي</td><td className="num">{fmtMoney(total)}</td><td /></tr></tfoot>
+            <tfoot>
+              <tr><td colSpan={3}>المجموع قبل الضريبة</td><td className="num">{fmtMoney(total)}</td><td /></tr>
+              <tr className="muted"><td colSpan={3}>ضريبة القيمة المضافة (16%)</td><td className="num">{fmtMoney(total * VAT_RATE)}</td><td /></tr>
+              <tr style={{ fontWeight: 700 }}><td colSpan={3}>الإجمالي شامل الضريبة</td><td className="num">{fmtMoney(total * (1 + VAT_RATE))}</td><td /></tr>
+            </tfoot>
           </table>
           <button type="button" onClick={() => setEditLines((ls) => [...ls, { key: keySeq++, itemId: '', itemLabel: '', qty: '1', unitPrice: '', discountPct: '0' }])} style={{ marginTop: '0.5rem' }}>+ صنف</button>
 
@@ -297,9 +303,17 @@ export default function PurchaseInvoiceDetail() {
               ))}
             </tbody>
             <tfoot>
-              <tr style={{ fontWeight: 700 }}>
-                <td colSpan={4}>الإجمالي</td>
+              <tr>
+                <td colSpan={4}>المجموع قبل الضريبة</td>
                 <td className="num">{fmtMoney(total)}</td>
+              </tr>
+              <tr className="muted">
+                <td colSpan={4}>ضريبة القيمة المضافة (16%)</td>
+                <td className="num">{fmtMoney(total * VAT_RATE)}</td>
+              </tr>
+              <tr style={{ fontWeight: 700 }}>
+                <td colSpan={4}>الإجمالي شامل الضريبة</td>
+                <td className="num">{fmtMoney(total * (1 + VAT_RATE))}</td>
               </tr>
             </tfoot>
           </table>
@@ -308,6 +322,16 @@ export default function PurchaseInvoiceDetail() {
 
       {invoice.status === 'draft' && !editing && (
         <div className="card" style={{ maxWidth: 460 }}>
+          <p className="muted" style={{ fontSize: '0.85rem' }}>
+            الإجمالي شامل الضريبة (16%): <strong>{fmtMoney(total * (1 + VAT_RATE))}</strong> (منها {fmtMoney(total * VAT_RATE)} ضريبة)
+          </p>
+          <div className="field">
+            <label>حساب ضريبة المدخلات</label>
+            <select value={vatAccountId} onChange={(e) => setVatAccountId(e.target.value)}>
+              <option value="">—</option>
+              {accounts?.map((a) => <option key={a.id} value={a.id}>{a.code} · {a.name_ar}</option>)}
+            </select>
+          </div>
           {err && <p className="error">{err}</p>}
           <div className="row">
             <button className="btn-primary" disabled={busy} onClick={postDraft}>ترحيل</button>

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase.ts';
 import { useOrg } from '../lib/org.tsx';
-import { fmtMoney, today, translateError } from '../lib/format.ts';
+import { VAT_RATE, fmtMoney, today, translateError } from '../lib/format.ts';
 import { ItemPicker } from '../components/ItemPicker.tsx';
 
 interface DealerOpt { id: string; code: string; name_ar: string; }
@@ -24,6 +24,7 @@ export default function SalesInvoiceNew() {
   const [paymentMethod, setPaymentMethod] = useState<'credit' | 'cash'>('credit');
   const [cashAccountId, setCashAccountId] = useState('');
   const [defaultSalesAccountId, setDefaultSalesAccountId] = useState('');
+  const [vatAccountId, setVatAccountId] = useState('');
   const [lines, setLines] = useState<Line[]>([emptyLine()]);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -75,6 +76,7 @@ export default function SalesInvoiceNew() {
       if (!dealerId) throw new Error('اختر العميل');
       if (!warehouseId) throw new Error('اختر المستودع');
       if (paymentMethod === 'cash' && !cashAccountId) throw new Error('اختر حساب الصندوق/البنك للبيع النقدي');
+      if (!vatAccountId) throw new Error('اختر حساب ضريبة المخرجات');
       const validLines = lines.filter((l) => l.itemId && (parseFloat(l.qty) || 0) > 0 && parseFloat(l.unitPrice) >= 0);
       if (validLines.length === 0) throw new Error('أضف صنفاً واحداً على الأقل');
       const short = validLines.find((l) => l.onHand !== null && (parseFloat(l.qty) || 0) > l.onHand);
@@ -93,6 +95,7 @@ export default function SalesInvoiceNew() {
       const { error: pErr } = await supabase.rpc('post_sales_invoice', {
         p_invoice_id: invoiceId,
         p_default_sales_account_id: defaultSalesAccountId || null,
+        p_output_vat_account_id: vatAccountId,
       });
       if (pErr) throw pErr;
       nav('/sales-invoices');
@@ -187,21 +190,40 @@ export default function SalesInvoiceNew() {
             })}
           </tbody>
           <tfoot>
-            <tr style={{ fontWeight: 700 }}>
-              <td colSpan={4}>الإجمالي</td>
+            <tr>
+              <td colSpan={4}>المجموع قبل الضريبة</td>
               <td className="num">{fmtMoney(total)}</td>
+              <td />
+            </tr>
+            <tr className="muted">
+              <td colSpan={4}>ضريبة القيمة المضافة (16%)</td>
+              <td className="num">{fmtMoney(total * VAT_RATE)}</td>
+              <td />
+            </tr>
+            <tr style={{ fontWeight: 700 }}>
+              <td colSpan={4}>الإجمالي شامل الضريبة</td>
+              <td className="num">{fmtMoney(total * (1 + VAT_RATE))}</td>
               <td />
             </tr>
           </tfoot>
         </table>
         <button type="button" onClick={() => setLines((ls) => [...ls, emptyLine()])} style={{ marginTop: '0.5rem' }}>+ صنف</button>
 
-        <div className="field" style={{ marginTop: '1rem', maxWidth: 320 }}>
-          <label>حساب المبيعات الافتراضي (لأي صنف بلا حساب مبيعات خاص)</label>
-          <select value={defaultSalesAccountId} onChange={(e) => setDefaultSalesAccountId(e.target.value)}>
-            <option value="">—</option>
-            {accounts?.map((a) => <option key={a.id} value={a.id}>{a.code} · {a.name_ar}</option>)}
-          </select>
+        <div className="row" style={{ marginTop: '1rem' }}>
+          <div className="field grow">
+            <label>حساب المبيعات الافتراضي (لأي صنف بلا حساب مبيعات خاص)</label>
+            <select value={defaultSalesAccountId} onChange={(e) => setDefaultSalesAccountId(e.target.value)}>
+              <option value="">—</option>
+              {accounts?.map((a) => <option key={a.id} value={a.id}>{a.code} · {a.name_ar}</option>)}
+            </select>
+          </div>
+          <div className="field grow">
+            <label>حساب ضريبة المخرجات</label>
+            <select value={vatAccountId} onChange={(e) => setVatAccountId(e.target.value)}>
+              <option value="">—</option>
+              {accounts?.map((a) => <option key={a.id} value={a.id}>{a.code} · {a.name_ar}</option>)}
+            </select>
+          </div>
         </div>
 
         {err && <p className="error">{err}</p>}

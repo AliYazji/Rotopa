@@ -12,6 +12,12 @@ export const fmtDate = (d: string | null | undefined) =>
 
 export const today = () => new Date().toISOString().slice(0, 10);
 
+// Mirrors app.vat_rate() on the database side (20250911002000_vat.sql) —
+// single flat rate for the whole system, no per-item exemption yet. Only
+// used here to show the customer/supplier-facing total before posting;
+// the database is the actual source of truth for what gets posted.
+export const VAT_RATE = 0.16;
+
 /**
  * PostgREST's .or()/.ilike() filter strings are built by hand-interpolating
  * the search term — `,` separates conditions and `.`/`(`/`)` are part of its

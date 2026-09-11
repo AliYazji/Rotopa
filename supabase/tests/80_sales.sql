@@ -12,7 +12,7 @@ do $$
 declare
   v_org uuid := current_setting('t.org')::uuid;
   v_base uuid := (select base_currency_id from organizations where id = v_org);
-  v_parent uuid; v_ar uuid; v_cash uuid; v_sales_acc uuid; v_inv_acc uuid; v_cogs_acc uuid; v_equity uuid;
+  v_parent uuid; v_ar uuid; v_cash uuid; v_sales_acc uuid; v_inv_acc uuid; v_cogs_acc uuid; v_equity uuid; v_vat_out uuid;
   v_wh uuid; v_item uuid; v_cust uuid;
   v_inv1 uuid; v_inv2 uuid; v_entry uuid; v_move_open uuid;
 begin
@@ -23,6 +23,7 @@ begin
   insert into accounts (org_id, code, name_ar, parent_id, is_postable, nature) values (v_org,'INV','المخزون',v_parent,true,'debit') returning id into v_inv_acc;
   insert into accounts (org_id, code, name_ar, parent_id, is_postable, nature) values (v_org,'COGS','تكلفة البضاعة',v_parent,true,'debit') returning id into v_cogs_acc;
   insert into accounts (org_id, code, name_ar, parent_id, is_postable, nature) values (v_org,'EQ','حقوق الملكية',v_parent,true,'credit') returning id into v_equity;
+  insert into accounts (org_id, code, name_ar, parent_id, is_postable, nature) values (v_org,'VATOUT','ضريبة مخرجات',v_parent,true,'credit') returning id into v_vat_out;
 
   insert into warehouses (org_id, code, name_ar) values (v_org,'W1','الرئيسي') returning id into v_wh;
   insert into dealers (org_id, code, name_ar, is_customer, account_id) values (v_org,'C1','عميل',true,v_ar) returning id into v_cust;
@@ -38,11 +39,12 @@ begin
   -- 1) credit sale: 10 units @ 25 (price) — cost stays 10 (weighted average, one batch)
   v_inv1 := create_sales_invoice(v_org, current_date, v_cust, v_wh,
     jsonb_build_array(jsonb_build_object('item_id', v_item, 'qty', 10, 'unit_price', 25)));
-  v_entry := post_sales_invoice(v_inv1);
+  v_entry := post_sales_invoice(v_inv1, p_output_vat_account_id := v_vat_out);
 
   assert item_stock_on_hand(v_item, v_wh) = 90, 'stock should drop to 90 after the sale';
-  assert account_balance(v_ar) = 250, 'AR should be debited 250 (10 x 25)';
-  assert account_balance(v_sales_acc) = -250, 'sales should be credited 250';
+  assert account_balance(v_ar) = 290, 'AR should be debited 290 (250 subtotal + 40 VAT at 16%)';
+  assert account_balance(v_sales_acc) = -250, 'sales should be credited only the VAT-exclusive 250';
+  assert account_balance(v_vat_out) = -40, 'output VAT should be credited 40 (16% of 250)';
   assert account_balance(v_cogs_acc) = 100, 'COGS should be debited 100 (10 x cost 10)';
   assert account_balance(v_inv_acc) = 1000 - 100, 'inventory should drop by the cost, 900';
   assert (select unit_cost from sales_invoice_lines where invoice_id = v_inv1) = 10, 'line cost should be the real moving average';
@@ -55,15 +57,17 @@ begin
   v_inv2 := create_sales_invoice(v_org, current_date, v_cust, v_wh,
     jsonb_build_array(jsonb_build_object('item_id', v_item, 'qty', 5, 'unit_price', 25)),
     p_payment_method := 'cash', p_cash_account_id := v_cash);
-  perform post_sales_invoice(v_inv2);
-  assert account_balance(v_cash) = 125, 'cash should be debited 125';
-  assert account_balance(v_ar) = 250, 'AR should be unaffected by the cash sale';
+  perform post_sales_invoice(v_inv2, p_output_vat_account_id := v_vat_out);
+  assert account_balance(v_cash) = 145, 'cash should be debited 145 (125 subtotal + 20 VAT)';
+  assert account_balance(v_ar) = 290, 'AR should be unaffected by the cash sale';
+  assert account_balance(v_vat_out) = -60, 'output VAT should accumulate across both sales (40 + 20)';
   assert item_stock_on_hand(v_item, v_wh) = 85, 'stock should drop to 85';
 
   -- 3) cannot oversell beyond stock (inherited from the inventory engine)
   begin
     perform post_sales_invoice(create_sales_invoice(v_org, current_date, v_cust, v_wh,
-      jsonb_build_array(jsonb_build_object('item_id', v_item, 'qty', 9999, 'unit_price', 25))));
+      jsonb_build_array(jsonb_build_object('item_id', v_item, 'qty', 9999, 'unit_price', 25))),
+      p_output_vat_account_id := v_vat_out);
     raise exception 'TEST FAIL: sold more than what is in stock';
   exception when sqlstate '23514' then null;
   end;
@@ -74,6 +78,7 @@ begin
   assert item_stock_on_hand(v_item, v_wh) = 95, 'stock should return to 95 (85 + 10 restocked)';
   assert account_balance(v_ar) = 0, 'AR should net back to 0 for the voided invoice''s effect';
   assert account_balance(v_sales_acc) = -125, 'sales should net back to just the cash sale (125)';
+  assert account_balance(v_vat_out) = -20, 'output VAT should net back to just the cash sale''s 20 — void reverses the VAT leg too, for free';
 
   -- 5) posted invoice is immutable
   begin
@@ -93,6 +98,14 @@ begin
       raise exception 'TEST FAIL: created a sales invoice for a non-customer';
     exception when sqlstate '23514' then null;
     end;
+  end;
+
+  -- 7) posting without an output VAT account is rejected clearly
+  begin
+    perform post_sales_invoice(create_sales_invoice(v_org, current_date, v_cust, v_wh,
+      jsonb_build_array(jsonb_build_object('item_id', v_item, 'qty', 1, 'unit_price', 25))));
+    raise exception 'TEST FAIL: posted a sales invoice with no output VAT account';
+  exception when sqlstate '23514' then null;
   end;
 
   raise notice 'SALES OK';

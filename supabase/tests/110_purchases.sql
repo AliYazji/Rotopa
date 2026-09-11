@@ -11,7 +11,7 @@ select set_config('t.org', create_organization('PURORG','مؤسسة اختبار
 do $$
 declare
   v_org uuid := current_setting('t.org')::uuid;
-  v_parent uuid; v_ap uuid; v_cash uuid; v_inv_acc uuid; v_cogs_acc uuid;
+  v_parent uuid; v_ap uuid; v_cash uuid; v_inv_acc uuid; v_cogs_acc uuid; v_vat_in uuid;
   v_wh uuid; v_item uuid; v_supp uuid;
   v_inv1 uuid; v_inv2 uuid; v_entry uuid;
 begin
@@ -20,6 +20,7 @@ begin
   insert into accounts (org_id, code, name_ar, parent_id, is_postable, nature) values (v_org,'CASH','الصندوق',v_parent,true,'debit') returning id into v_cash;
   insert into accounts (org_id, code, name_ar, parent_id, is_postable, nature) values (v_org,'INV','المخزون',v_parent,true,'debit') returning id into v_inv_acc;
   insert into accounts (org_id, code, name_ar, parent_id, is_postable, nature) values (v_org,'COGS','تكلفة البضاعة',v_parent,true,'debit') returning id into v_cogs_acc;
+  insert into accounts (org_id, code, name_ar, parent_id, is_postable, nature) values (v_org,'VATIN','ضريبة مدخلات',v_parent,true,'debit') returning id into v_vat_in;
 
   insert into warehouses (org_id, code, name_ar) values (v_org,'W1','الرئيسي') returning id into v_wh;
   insert into dealers (org_id, code, name_ar, is_supplier, account_id) values (v_org,'S1','مورد',true,v_ap) returning id into v_supp;
@@ -30,13 +31,14 @@ begin
   -- 1) credit purchase: 100 units @ 10, 10% discount -> net cost 9/unit
   v_inv1 := create_purchase_invoice(v_org, current_date, v_supp, v_wh,
     jsonb_build_array(jsonb_build_object('item_id', v_item, 'qty', 100, 'unit_price', 10, 'discount_pct', 10)));
-  v_entry := post_purchase_invoice(v_inv1);
+  v_entry := post_purchase_invoice(v_inv1, p_input_vat_account_id := v_vat_in);
 
   assert item_stock_on_hand(v_item, v_wh) = 100, 'stock should be 100 after the purchase';
-  assert account_balance(v_inv_acc) = 900, 'inventory should be debited 900 (100 x net 9)';
-  assert account_balance(v_ap) = -900, 'AP should be credited 900';
+  assert account_balance(v_inv_acc) = 900, 'inventory should be debited only the VAT-exclusive 900 (100 x net 9)';
+  assert account_balance(v_ap) = -1044, 'AP should be credited 1044 (900 subtotal + 144 VAT at 16%)';
+  assert account_balance(v_vat_in) = 144, 'input VAT should be debited 144 (16% of 900)';
   assert (select unit_cost from stock_move_lines sml join purchase_invoices pi on pi.stock_move_id = sml.move_id where pi.id = v_inv1) = 9,
-    'stock move line should carry the net unit cost (9), not the gross price (10)';
+    'stock move line should carry the net unit cost (9), not the gross price (10) — VAT plays no part in it either';
   assert (select sum(debit) from journal_lines where entry_id = v_entry) = (select sum(credit) from journal_lines where entry_id = v_entry),
     'purchase entry must balance';
 
@@ -44,9 +46,10 @@ begin
   v_inv2 := create_purchase_invoice(v_org, current_date, v_supp, v_wh,
     jsonb_build_array(jsonb_build_object('item_id', v_item, 'qty', 5, 'unit_price', 20)),
     p_payment_method := 'cash', p_cash_account_id := v_cash);
-  perform post_purchase_invoice(v_inv2);
-  assert account_balance(v_cash) = -100, 'cash should be credited 100 (5 x 20)';
-  assert account_balance(v_ap) = -900, 'AP should be unaffected by the cash purchase';
+  perform post_purchase_invoice(v_inv2, p_input_vat_account_id := v_vat_in);
+  assert account_balance(v_cash) = -116, 'cash should be credited 116 (100 subtotal + 16 VAT)';
+  assert account_balance(v_ap) = -1044, 'AP should be unaffected by the cash purchase';
+  assert account_balance(v_vat_in) = 160, 'input VAT should accumulate across both purchases (144 + 16)';
   assert item_stock_on_hand(v_item, v_wh) = 105, 'stock should rise to 105';
   -- weighted average after adding 5 @ 20 to 100 @ 9: (900 + 100) / 105
   assert round((select avg_cost from item_warehouse_balances where item_id = v_item and warehouse_id = v_wh), 4) = round(1000.0/105, 4),
@@ -58,6 +61,7 @@ begin
   assert item_stock_on_hand(v_item, v_wh) = 5, 'stock should drop back to just the cash purchase''s 5 units';
   assert account_balance(v_ap) = 0, 'AP should net back to 0 for the voided invoice''s effect';
   assert account_balance(v_inv_acc) = 100, 'inventory should net back to just the cash purchase''s 100 (5 x 20)';
+  assert account_balance(v_vat_in) = 16, 'input VAT should net back to just the cash purchase''s 16 — void reverses the VAT leg too, for free';
 
   -- 4) cannot void past what remains (simulate by trying to void the cash
   --    purchase after separately draining stock below its own quantity)
@@ -95,6 +99,14 @@ begin
       raise exception 'TEST FAIL: created a purchase invoice for a non-supplier';
     exception when sqlstate '23514' then null;
     end;
+  end;
+
+  -- 8) posting without an input VAT account is rejected clearly
+  begin
+    perform post_purchase_invoice(create_purchase_invoice(v_org, current_date, v_supp, v_wh,
+      jsonb_build_array(jsonb_build_object('item_id', v_item, 'qty', 1, 'unit_price', 10))));
+    raise exception 'TEST FAIL: posted a purchase invoice with no input VAT account';
+  exception when sqlstate '23514' then null;
   end;
 
   raise notice 'PURCHASES OK';
