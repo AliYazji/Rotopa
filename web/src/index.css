@@ -93,6 +93,11 @@ tr.rowlink { cursor: pointer; }
   padding: 1rem; display: flex; flex-direction: column; gap: 0.25rem;
 }
 .side .brand { font-weight: 700; font-size: 1.1rem; padding: 0.5rem; margin-bottom: 0.5rem; }
+.side .section-label {
+  font-size: 0.72rem; color: var(--faint); font-weight: 600; letter-spacing: 0.03em;
+  padding: 0.7rem 0.6rem 0.15rem;
+}
+.side .section-label:first-of-type { padding-top: 0.2rem; }
 .side a {
   color: var(--ink); padding: 0.5rem 0.6rem; border-radius: var(--radius); font-size: 0.95rem;
 }

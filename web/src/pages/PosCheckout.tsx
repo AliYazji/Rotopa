@@ -6,7 +6,7 @@ import { useOrg } from '../lib/org.tsx';
 import { VAT_RATE, fmtMoney, sanitizeSearchTerm, today, translateError } from '../lib/format.ts';
 
 interface WhOpt { id: string; code: string; name_ar: string; }
-interface AccOpt { id: string; code: string; name_ar: string; }
+interface AccOpt { id: string; code: string; name_ar: string; category_id: string | null; account_categories: { name_ar: string } | null; }
 interface CatOpt { id: string; name_ar: string; }
 interface DealerOpt { id: string; code: string; name_ar: string; }
 interface ItemHit {
@@ -16,9 +16,35 @@ interface ItemHit {
 interface CartLine { itemId: string; code: string; name: string; unitPrice: number; unit: string; qty: number; onHand: number | null }
 
 const WALKIN_CODE = 'CASH-WALKIN';
+const UNCATEGORIZED = 'غير مصنّف';
 const SETTINGS_KEYS = ['warehouseId', 'vatAccountId', 'defaultSalesAccountId', 'cashAccountId'] as const;
 type Settings = Record<(typeof SETTINGS_KEYS)[number], string>;
 const emptySettings: Settings = { warehouseId: '', vatAccountId: '', defaultSalesAccountId: '', cashAccountId: '' };
+
+// grouped <optgroup> account picker, reused for every account select on this
+// page (VAT/default-sales/register) — ~90 real accounts flat was hard to scan
+function AccountSelect({ value, onChange, placeholder, accounts }: {
+  value: string; onChange: (v: string) => void; placeholder: string; accounts: AccOpt[] | undefined;
+}) {
+  const order: string[] = [];
+  const groups = new Map<string, { label: string; rows: AccOpt[] }>();
+  for (const a of accounts ?? []) {
+    const key = a.category_id ?? 'none';
+    const label = a.account_categories?.name_ar ?? UNCATEGORIZED;
+    if (!groups.has(key)) { groups.set(key, { label, rows: [] }); order.push(key); }
+    groups.get(key)!.rows.push(a);
+  }
+  return (
+    <select value={value} onChange={(e) => onChange(e.target.value)}>
+      <option value="">{placeholder}</option>
+      {order.map((key) => (
+        <optgroup key={key} label={groups.get(key)!.label}>
+          {groups.get(key)!.rows.map((a) => <option key={a.id} value={a.id}>{a.code} · {a.name_ar}</option>)}
+        </optgroup>
+      ))}
+    </select>
+  );
+}
 
 export default function PosCheckout() {
   const { org } = useOrg();
@@ -64,10 +90,12 @@ export default function PosCheckout() {
     if (firstId) setSettings((s) => (s.warehouseId ? s : { ...s, warehouseId: firstId }));
   }, [warehouses]); // eslint-disable-line react-hooks/exhaustive-deps
   const { data: accounts } = useQuery({
-    queryKey: ['postable-accounts', org?.id], enabled: !!org,
+    queryKey: ['postable-accounts-grouped', org?.id], enabled: !!org,
     queryFn: async (): Promise<AccOpt[]> => {
-      const { data, error } = await supabase.from('accounts').select('id, code, name_ar').eq('is_postable', true).order('code');
-      if (error) throw error; return data as AccOpt[];
+      const { data, error } = await supabase.from('accounts')
+        .select('id, code, name_ar, category_id, account_categories(name_ar)')
+        .eq('is_postable', true).order('code');
+      if (error) throw error; return data as unknown as AccOpt[];
     },
   });
   const { data: headerAccounts } = useQuery({
@@ -116,6 +144,19 @@ export default function PosCheckout() {
       return data as unknown as ItemHit[];
     },
   });
+
+  const itemGroups = useMemo(() => {
+    const nameById = new Map((categories ?? []).map((c) => [c.id, c.name_ar]));
+    const order: string[] = [];
+    const groups = new Map<string, { label: string; rows: ItemHit[] }>();
+    for (const it of items ?? []) {
+      const key = it.category_id ?? 'none';
+      const label = it.category_id ? (nameById.get(it.category_id) ?? UNCATEGORIZED) : UNCATEGORIZED;
+      if (!groups.has(key)) { groups.set(key, { label, rows: [] }); order.push(key); }
+      groups.get(key)!.rows.push(it);
+    }
+    return order.map((key) => groups.get(key)!);
+  }, [items, categories]);
 
   function onHandOf(hit: ItemHit) {
     return Number(hit.item_warehouse_balances.find((b) => b.warehouse_id === settings.warehouseId)?.qty ?? 0);
@@ -218,17 +259,13 @@ export default function PosCheckout() {
             </div>
             <div className="field grow">
               <label>حساب ضريبة المخرجات</label>
-              <select value={settings.vatAccountId} onChange={(e) => setSettings((s) => ({ ...s, vatAccountId: e.target.value }))}>
-                <option value="">—</option>
-                {accounts?.map((a) => <option key={a.id} value={a.id}>{a.code} · {a.name_ar}</option>)}
-              </select>
+              <AccountSelect accounts={accounts} value={settings.vatAccountId} placeholder="—"
+                onChange={(v) => setSettings((s) => ({ ...s, vatAccountId: v }))} />
             </div>
             <div className="field grow">
               <label>حساب المبيعات الافتراضي (لصنف بلا حساب خاص)</label>
-              <select value={settings.defaultSalesAccountId} onChange={(e) => setSettings((s) => ({ ...s, defaultSalesAccountId: e.target.value }))}>
-                <option value="">—</option>
-                {accounts?.map((a) => <option key={a.id} value={a.id}>{a.code} · {a.name_ar}</option>)}
-              </select>
+              <AccountSelect accounts={accounts} value={settings.defaultSalesAccountId} placeholder="—"
+                onChange={(v) => setSettings((s) => ({ ...s, defaultSalesAccountId: v }))} />
             </div>
           </div>
           {!walkinDealer && (
@@ -266,19 +303,24 @@ export default function PosCheckout() {
           </div>
           {!settings.warehouseId && <p className="muted">اختر المستودع من "إعدادات الجلسة" فوق.</p>}
           {settings.warehouseId && items && items.length === 0 && <p className="muted">ما في صنف مطابق.</p>}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: '0.6rem' }}>
-            {items?.map((it) => {
-              const onHand = onHandOf(it);
-              return (
-                <button key={it.id} className="card" style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', gap: '0.4rem', padding: '0.75rem' }} onClick={() => addToCart(it)}>
-                  <span className="mono muted" style={{ fontSize: '0.75rem' }}>{it.code}</span>
-                  <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>{it.name_ar}</span>
-                  <span className="mono" style={{ marginTop: 'auto', fontWeight: 600 }}>{fmtMoney(it.sales_price)}</span>
-                  <span className={onHand > 0 ? 'muted' : 'error'} style={{ fontSize: '0.75rem' }}>متوفر: {fmtMoney(onHand)}</span>
-                </button>
-              );
-            })}
-          </div>
+          {itemGroups.map((g) => (
+            <div key={g.label} style={{ marginBottom: '1rem' }}>
+              <h2 style={{ fontSize: '0.85rem', color: 'var(--muted)', margin: '0 0 0.4rem' }}>{g.label}</h2>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: '0.6rem' }}>
+                {g.rows.map((it) => {
+                  const onHand = onHandOf(it);
+                  return (
+                    <button key={it.id} className="card" style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', gap: '0.4rem', padding: '0.75rem' }} onClick={() => addToCart(it)}>
+                      <span className="mono muted" style={{ fontSize: '0.75rem' }}>{it.code}</span>
+                      <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>{it.name_ar}</span>
+                      <span className="mono" style={{ marginTop: 'auto', fontWeight: 600 }}>{fmtMoney(it.sales_price)}</span>
+                      <span className={onHand > 0 ? 'muted' : 'error'} style={{ fontSize: '0.75rem' }}>متوفر: {fmtMoney(onHand)}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
         </div>
 
         <div className="card" style={{ flex: '1 1 320px', minWidth: 300, display: 'flex', flexDirection: 'column' }}>
@@ -311,10 +353,8 @@ export default function PosCheckout() {
           {paymentType === 'cash' && (
             <div className="field" style={{ marginTop: '0.5rem' }}>
               <label>الصندوق</label>
-              <select value={settings.cashAccountId} onChange={(e) => setSettings((s) => ({ ...s, cashAccountId: e.target.value }))}>
-                <option value="">اختر صندوق المبيعات…</option>
-                {accounts?.map((a) => <option key={a.id} value={a.id}>{a.code} · {a.name_ar}</option>)}
-              </select>
+              <AccountSelect accounts={accounts} value={settings.cashAccountId} placeholder="اختر صندوق المبيعات…"
+                onChange={(v) => setSettings((s) => ({ ...s, cashAccountId: v }))} />
             </div>
           )}
           <div className="field" style={{ marginTop: '0.5rem' }}>
