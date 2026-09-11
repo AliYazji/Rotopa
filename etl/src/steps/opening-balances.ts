@@ -7,7 +7,15 @@ import { pool, tx, iso } from '../target.ts';
  *
  * The legacy backup has no usable stored balance (master_acc.initial_balance
  * and .BLANCE are both empty in this dump), so each account's balance is the
- * net of its full acc_trn history.
+ * net of its full acc_trn history — computed the way the legacy application
+ * itself computed it (see dbo.Account_Balance_Trns_DB_CR, still callable
+ * against the restored database): sum acc_trn.AccAmount (the row's amount in
+ * the ACCOUNT's own currency), split by whether DBAmount is zero, not by
+ * summing DBAmount/CRAmount directly — those turn out NOT to be reliable
+ * amount fields for every row (see etl/README.md for what that changes and
+ * why it matters: the naive DBAmount/CRAmount sum happens to net to ~0 across
+ * the whole ledger, which looks reassuring but is coincidental — it does not
+ * match what the legacy app itself would have reported).
  *
  * Income and expense accounts are NOT carried forward individually — a real
  * cut-over closes them first. We classify by the legacy master_acc.class_acc
@@ -31,12 +39,15 @@ export async function migrateOpeningBalances(orgId: string): Promise<void> {
     return;
   }
 
-  const legacyBalances = await q<{ ACC_NO: string; db: number; cr: number }>(`
-    SELECT ACC_NO, SUM(DBAmount) AS db, SUM(CRAmount) AS cr
+  const legacyBalances = await q<{ ACC_NO: string; net: number }>(`
+    SELECT ACC_NO,
+           SUM(CASE WHEN DBAmount = 0 THEN 0 ELSE AccAmount END)
+         - SUM(CASE WHEN DBAmount <> 0 THEN 0 ELSE AccAmount END) AS net
     FROM acc_trn
     WHERE ISNULL(delete_flage, 0) = 0
     GROUP BY ACC_NO
-    HAVING SUM(DBAmount) <> SUM(CRAmount)`);
+    HAVING SUM(CASE WHEN DBAmount = 0 THEN 0 ELSE AccAmount END)
+         <> SUM(CASE WHEN DBAmount <> 0 THEN 0 ELSE AccAmount END)`);
 
   const legacyClass = await q<{ acc_no: string; class_acc: number | null }>(
     `SELECT acc_no, class_acc FROM master_acc`,
@@ -78,7 +89,7 @@ export async function migrateOpeningBalances(orgId: string): Promise<void> {
   let netIncomeBase = 0; // sum of P&L account net_base (revenue negative, expense positive)
 
   for (const r of legacyBalances) {
-    const net = Number(r.db) - Number(r.cr);
+    const net = Number(r.net);
     if (Math.abs(net) < 0.0001) continue;
     const code = r.ACC_NO.trim();
     const acc = accByCode.get(code);

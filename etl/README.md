@@ -65,20 +65,25 @@ current fiscal year.
   auto-created **`OB-VAR` — فروقات الأرصدة الافتتاحية** account instead of
   being dropped.
 
-**Open question, not yet resolved — verify before relying on these figures
-for a real cut-over:** on this backup, `OB-VAR` absorbs a plug of roughly
-105,000, unrelated to the P&L-closing above (closing 23 accounts into one
-retained-earnings line does not change the total debit/credit — only
-regrouping does that). The legacy `AccBalance()` function computes an
-account's balance from `AccAmount`/`group_amount` gated by
-`DBAmount<>0`/`CRAmount<>0`, *not* by summing `DBAmount`/`CRAmount`
-directly — trying that alternative changes the numbers but does not remove
-the imbalance either (2,427,335.600 vs 2,398,355.660 instead of vs
-2,427,335.660), so it isn't obviously "more correct". Resolving this
-precisely needs either a trial-balance report from the running legacy
-application to reconcile against, or reading the rest of `AccBalance`'s
-~40 branches (`analysis/src_functions_scalar.sql`). Until then, treat
-`OB-VAR`'s balance as "needs an accountant's review", not as fact.
+**Why `AccAmount`, not `DBAmount`/`CRAmount`, is the amount field.** An
+earlier version of this step summed `DBAmount`/`CRAmount` directly, which
+happened to net to almost exactly zero across the whole legacy ledger
+(2,427,335.600 vs .660) — reassuring, but wrong: those columns are 0/non-zero
+*markers* for which side a row is on, not the amount in every case. The
+legacy application's own `dbo.Account_Balance_Trns_DB_CR` function (still
+callable against the restored backup — the old *desktop app* is gone, but the
+database and its stored procedures are not) computes a balance from
+`AccAmount` (the row's amount in the account's own currency), gated by
+`DBAmount = 0`. Running that exact formula against every account changed
+several balances materially — e.g. the USD bank account's balance went from
+an NIS-sized number that made no sense for a USD account to 13,000 (its real
+USD balance) — and `OB-VAR`'s plug dropped from ~105,000 to **3,520.06** on
+this backup. The step now uses this verified formula.
+
+The remaining 3,520.06 is small enough to be an honest rounding/edge-case
+residual rather than a modeling error, but it is still worth an accountant's
+five-minute look in `OB-VAR` before trusting the opening trial balance as a
+real balance sheet.
 
 **Also expect a few expense accounts to be carried forward instead of
 closed**, when the source data itself never classified them: e.g. `51023`,
