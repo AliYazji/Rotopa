@@ -13,7 +13,7 @@ interface Invoice {
   dealer: { name_ar: string } | null; void_reason: string | null;
 }
 interface Line {
-  id: string; line_no: number; qty: number; unit_price: number; discount_pct: number; line_total: number; unit_cost: number | null;
+  id: string; line_no: number; item_id: string; qty: number; unit_price: number; discount_pct: number; line_total: number; unit_cost: number | null;
   item: { code: string; name_ar: string; base_unit_name: string } | null;
 }
 interface DealerOpt { id: string; code: string; name_ar: string; }
@@ -64,7 +64,7 @@ export default function SalesInvoiceDetail() {
     enabled: !!id,
     queryFn: async (): Promise<Line[]> => {
       const { data, error } = await supabase.from('sales_invoice_lines')
-        .select('id, line_no, qty, unit_price, discount_pct, line_total, unit_cost, item:item_id(code, name_ar, base_unit_name)')
+        .select('id, line_no, item_id, qty, unit_price, discount_pct, line_total, unit_cost, item:item_id(code, name_ar, base_unit_name)')
         .eq('invoice_id', id).order('line_no');
       if (error) throw error;
       return data as unknown as Line[];
@@ -166,6 +166,27 @@ export default function SalesInvoiceDetail() {
     setBusy(false);
     if (error) return setErr(translateError(error.message));
     await refresh();
+  }
+
+  // A posted invoice is intentionally immutable (module 05's core guarantee —
+  // it already moved real stock and posted a real journal entry). Fixing a
+  // mistake means void it, then correct a copy: this creates a fresh DRAFT
+  // with the same header and lines and takes you straight to editing it.
+  async function duplicateToDraft() {
+    if (!invoice || !lines) return;
+    setErr(null); setBusy(true);
+    try {
+      const { data: newId, error } = await supabase.rpc('create_sales_invoice', {
+        p_org: org!.id, p_invoice_date: today(), p_dealer_id: invoice.dealer_id, p_warehouse_id: invoice.warehouse_id,
+        p_lines: lines.map((l) => ({ item_id: l.item_id, qty: l.qty, unit_price: l.unit_price, discount_pct: l.discount_pct })),
+        p_payment_method: invoice.payment_method, p_cash_account_id: invoice.cash_account_id,
+        p_description: invoice.description,
+      });
+      if (error) throw error;
+      nav(`/sales-invoices/${newId}`);
+    } catch (e) {
+      setErr(translateError((e as Error).message));
+    } finally { setBusy(false); }
   }
 
   if (isLoading || !invoice) return <p className="muted">جارٍ التحميل…</p>;
@@ -314,7 +335,15 @@ export default function SalesInvoiceDetail() {
       )}
 
       {invoice.status === 'posted' && (
-        <div className="card" style={{ maxWidth: 420 }}>
+        <div className="card" style={{ maxWidth: 460 }}>
+          <p className="muted" style={{ fontSize: '0.9rem', marginTop: 0 }}>
+            الفاتورة المرحّلة ثابتة عمداً — حرّكت مخزوناً حقيقياً ورحّلت قيداً حقيقياً، فتعديلها
+            بأثر رجعي بيكسر السجل. لتصحيح خطأ: <strong>انسخ</strong> لمسودة جديدة تقدر تعدّلها
+            وترحّلها، وبعدين <strong>ألغِ</strong> هاي (أو العكس — حسب حالتك).
+          </p>
+          <div className="row" style={{ marginBottom: '1rem' }}>
+            <button disabled={busy} onClick={duplicateToDraft}>نسخ إلى مسودة قابلة للتعديل</button>
+          </div>
           <h2 style={{ fontSize: '0.95rem' }}>إلغاء الفاتورة</h2>
           <p className="muted" style={{ fontSize: '0.9rem' }}>بينشئ فاتورة مرجع تعكس القيد وتعيد البضاعة للمخزون.</p>
           <div className="field"><input placeholder="السبب (اختياري)" value={reason} onChange={(e) => setReason(e.target.value)} /></div>
@@ -323,7 +352,11 @@ export default function SalesInvoiceDetail() {
         </div>
       )}
       {invoice.status === 'void' && (
-        <p className="muted">أُلغيت{invoice.void_reason ? ` — ${invoice.void_reason}` : ''}.</p>
+        <div className="card" style={{ maxWidth: 460 }}>
+          <p className="muted" style={{ marginTop: 0 }}>أُلغيت{invoice.void_reason ? ` — ${invoice.void_reason}` : ''}.</p>
+          {err && <p className="error">{err}</p>}
+          <button disabled={busy} onClick={duplicateToDraft}>نسخ إلى مسودة قابلة للتعديل</button>
+        </div>
       )}
       <p style={{ marginTop: '1rem' }}><Link to="/sales-invoices">‹ رجوع لقائمة الفواتير</Link></p>
     </>
