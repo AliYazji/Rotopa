@@ -26,7 +26,7 @@ export default function PosCheckout() {
   const qc = useQueryClient();
 
   const [settings, setSettings] = useState<Settings>(emptySettings);
-  const [showSettings, setShowSettings] = useState(false);
+  const [showSettings, setShowSettings] = useState(true);
   const [search, setSearch] = useState('');
   const [categoryId, setCategoryId] = useState('');
   const [cart, setCart] = useState<CartLine[]>([]);
@@ -56,6 +56,13 @@ export default function PosCheckout() {
       if (error) throw error; return data as WhOpt[];
     },
   });
+  // most orgs only have one active warehouse — pick it automatically so the
+  // item grid populates without a manual step; a real choice (or a saved
+  // one from localStorage) always wins over this
+  useEffect(() => {
+    const firstId = warehouses?.[0]?.id;
+    if (firstId) setSettings((s) => (s.warehouseId ? s : { ...s, warehouseId: firstId }));
+  }, [warehouses]); // eslint-disable-line react-hooks/exhaustive-deps
   const { data: accounts } = useQuery({
     queryKey: ['postable-accounts', org?.id], enabled: !!org,
     queryFn: async (): Promise<AccOpt[]> => {
@@ -95,11 +102,13 @@ export default function PosCheckout() {
   const term = sanitizeSearchTerm(search);
   const { data: items } = useQuery({
     queryKey: ['pos-items', org?.id, term, categoryId, settings.warehouseId],
-    enabled: !!org && !!settings.warehouseId && (term.length >= 2 || !!categoryId),
+    enabled: !!org && !!settings.warehouseId,
     queryFn: async (): Promise<ItemHit[]> => {
       let q = supabase.from('items')
         .select('id, code, name_ar, sales_price, base_unit_name, category_id, item_warehouse_balances(qty, warehouse_id)')
-        .eq('is_active', true).eq('is_stock_tracked', true).limit(30);
+        .eq('is_active', true).eq('is_stock_tracked', true).order('name_ar').limit(40);
+      // no search/category chosen yet -> a default browse list (capped at
+      // 40) instead of an empty grid; typing or picking a category narrows it
       if (term.length >= 2) q = q.or(`name_ar.ilike.%${term}%,code.ilike.%${term}%`);
       if (categoryId) q = q.eq('category_id', categoryId);
       const { data, error } = await q;
@@ -160,7 +169,7 @@ export default function PosCheckout() {
     if (overStockLine) return setErr(`الكمية المطلوبة لصنف "${overStockLine.name}" أكتر من المتوفر (${fmtMoney(overStockLine.onHand)}).`);
     const effectiveDealerId = paymentType === 'credit' ? dealerId : walkinDealer?.id;
     if (paymentType === 'credit' && !dealerId) return setErr('اختر الزبون للبيع الآجل');
-    if (paymentType === 'cash' && !settings.cashAccountId) return setErr('اختر صندوق المبيعات من الإعدادات فوق');
+    if (paymentType === 'cash' && !settings.cashAccountId) return setErr('اختر الصندوق');
     if (!effectiveDealerId) return setErr('ما في زبون نقدي عام معرَّف بعد — أنشئه من الإعدادات فوق');
 
     setBusy(true);
@@ -204,15 +213,6 @@ export default function PosCheckout() {
                 {warehouses?.map((w) => <option key={w.id} value={w.id}>{w.code} · {w.name_ar}</option>)}
               </select>
             </div>
-            <div className="field grow">
-              <label>صندوق المبيعات (للدفع الفوري)</label>
-              <select value={settings.cashAccountId} onChange={(e) => setSettings((s) => ({ ...s, cashAccountId: e.target.value }))}>
-                <option value="">—</option>
-                {accounts?.map((a) => <option key={a.id} value={a.id}>{a.code} · {a.name_ar}</option>)}
-              </select>
-            </div>
-          </div>
-          <div className="row" style={{ flexWrap: 'wrap' }}>
             <div className="field grow">
               <label>حساب ضريبة المخرجات</label>
               <select value={settings.vatAccountId} onChange={(e) => setSettings((s) => ({ ...s, vatAccountId: e.target.value }))}>
@@ -261,8 +261,8 @@ export default function PosCheckout() {
               {categories?.map((c) => <option key={c.id} value={c.id}>{c.name_ar}</option>)}
             </select>
           </div>
-          {!settings.warehouseId && <p className="muted">اختر المستودع من "إعدادات الجلسة" فوق قبل البحث عن الأصناف.</p>}
-          {settings.warehouseId && term.length < 2 && !categoryId && <p className="muted">اكتب حرفين على الأقل للبحث، أو اختر تصنيفاً.</p>}
+          {!settings.warehouseId && <p className="muted">اختر المستودع من "إعدادات الجلسة" فوق.</p>}
+          {settings.warehouseId && items && items.length === 0 && <p className="muted">ما في صنف مطابق.</p>}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: '0.6rem' }}>
             {items?.map((it) => {
               const onHand = onHandOf(it);
@@ -305,6 +305,15 @@ export default function PosCheckout() {
             <button style={{ flex: 1 }} className={paymentType === 'cash' ? 'btn-primary' : ''} onClick={() => setPaymentType('cash')}>فوري</button>
             <button style={{ flex: 1 }} className={paymentType === 'credit' ? 'btn-primary' : ''} onClick={() => setPaymentType('credit')}>آجل</button>
           </div>
+          {paymentType === 'cash' && (
+            <div className="field" style={{ marginTop: '0.5rem' }}>
+              <label>الصندوق</label>
+              <select value={settings.cashAccountId} onChange={(e) => setSettings((s) => ({ ...s, cashAccountId: e.target.value }))}>
+                <option value="">اختر صندوق المبيعات…</option>
+                {accounts?.map((a) => <option key={a.id} value={a.id}>{a.code} · {a.name_ar}</option>)}
+              </select>
+            </div>
+          )}
           {paymentType === 'credit' && (
             <div className="field" style={{ marginTop: '0.5rem' }}>
               <label>الزبون</label>
