@@ -5,7 +5,8 @@ import { fmtMoney, sanitizeSearchTerm } from '../lib/format.ts';
 
 interface ItemHit {
   id: string; code: string; name_ar: string; base_unit_name: string; sales_price: number;
-  onHand: number | null;   // null = stock unknown (no warehouse given)
+  onHand: number | null;    // null = stock unknown (no warehouse given)
+  avgCost: number | null;   // null = unknown (no warehouse given) or no stock yet
 }
 
 /** Type-ahead search over the item catalog — never loads the whole table,
@@ -33,18 +34,20 @@ export function ItemPicker({
       const term = sanitizeSearchTerm(q);
       const { data, error } = await supabase
         .from('items')
-        .select('id, code, name_ar, base_unit_name, sales_price, item_warehouse_balances(qty, warehouse_id)')
+        .select('id, code, name_ar, base_unit_name, sales_price, item_warehouse_balances(qty, avg_cost, warehouse_id)')
         .or(`name_ar.ilike.%${term}%,code.ilike.%${term}%`)
         .eq('is_stock_tracked', true)
         .eq('is_active', true)
         .limit(8);
       if (error) throw error;
-      return (data as any[]).map((it) => ({
-        id: it.id, code: it.code, name_ar: it.name_ar, base_unit_name: it.base_unit_name, sales_price: it.sales_price,
-        onHand: warehouseId
-          ? Number(it.item_warehouse_balances.find((b: any) => b.warehouse_id === warehouseId)?.qty ?? 0)
-          : null,
-      }));
+      return (data as any[]).map((it) => {
+        const balance = warehouseId ? it.item_warehouse_balances.find((b: any) => b.warehouse_id === warehouseId) : null;
+        return {
+          id: it.id, code: it.code, name_ar: it.name_ar, base_unit_name: it.base_unit_name, sales_price: it.sales_price,
+          onHand: warehouseId ? Number(balance?.qty ?? 0) : null,
+          avgCost: balance ? Number(balance.avg_cost) : null,
+        };
+      });
     },
   });
   return (

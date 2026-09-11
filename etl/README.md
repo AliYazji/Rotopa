@@ -137,7 +137,8 @@ rows "unmatched" until traced down) and is now fixed with an explicit
 
 ## Not yet migrated (later phases)
 
-Sales and purchase invoices — historical ones, that is; the sales module
-itself now exists (module 10) and posts *new* invoices correctly. Module 11
-(purchases) is not built yet; `stock_moves.move_type` already reserves
-`purchase_in` for when it is. Payroll.
+Sales and purchase invoices — historical ones, that is; both the sales
+(module 10) and purchases (module 11) modules now exist and post *new*
+invoices correctly, but no ETL step brings over the legacy `INVOICE_TB`
+history as invoice rows (opening stock/balances already captured their net
+effect, so back-filling old invoice documents would double it). Payroll.

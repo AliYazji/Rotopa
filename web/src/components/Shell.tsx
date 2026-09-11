@@ -11,6 +11,7 @@ const nav = [
   { to: '/items', label: 'الأصناف' },
   { to: '/stock-moves', label: 'حركات المخزون' },
   { to: '/sales-invoices', label: 'فواتير المبيعات' },
+  { to: '/purchase-invoices', label: 'فواتير المشتريات' },
   { to: '/vouchers', label: 'السندات' },
   { to: '/cheques', label: 'الشيكات' },
   { to: '/journals', label: 'القيود' },
