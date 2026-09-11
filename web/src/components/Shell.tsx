@@ -18,6 +18,8 @@ const nav = [
   { to: '/cheques', label: 'الشيكات' },
   { to: '/journals', label: 'القيود' },
   { to: '/accounts', label: 'دليل الحسابات' },
+  { to: '/income-statement', label: 'قائمة الدخل' },
+  { to: '/balance-sheet', label: 'الميزانية العمومية' },
   { to: '/currencies', label: 'العملات' },
 ];
 

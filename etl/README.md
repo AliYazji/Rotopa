@@ -44,6 +44,22 @@ Every step is idempotent (`on conflict do update`) — safe to re-run.
 | `opening-stock` | `Item_stock_Details` (summed) | one `stock_moves` row + lines | quantities/cost only — see below |
 | `opening-balances` | `acc_trn` (summed) | one `journal_entries` row + lines | see below |
 
+### Account categories are mostly unset — a real legacy data gap, not a bug
+
+`accounts.category_id` (what module 08's `income_statement()`/`balance_sheet()` reports need
+to place an account) comes from `master_acc.accountCategoryType`. Checked directly against the
+real backup: only 24 of 114 accounts have that field set to anything nonzero — the legacy system
+itself never classified roughly 80% of the chart of accounts. `master_acc.class_acc` looked like
+a tempting fallback (it covers all 114 accounts) but was already found unreliable for this in
+an earlier step (module 04/opening-balances work) — 4 real expense accounts are tagged
+`class_acc=2` instead of `5`, a known source-data inconsistency. Auto-deriving a financial-
+statement category from `class_acc` would silently misclassify those accounts as something
+other than expenses — worse than just leaving them unclassified. So the ETL does not attempt a
+fallback; the web app's income statement/balance sheet pages both show a banner naming how many
+balance-carrying accounts have no category, linking to دليل الحسابات (`AccountDetail.tsx` already
+has an editable "التصنيف" field from module 04) — this is a one-time manual cleanup task for
+whoever owns the real chart of accounts, not something to guess from ambiguous legacy data.
+
 ### Opening balances — how it works
 
 The legacy backup has no usable stored balance (`master_acc.initial_balance`

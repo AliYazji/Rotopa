@@ -39,6 +39,8 @@ import FixedAssetDetail from './pages/FixedAssetDetail.tsx';
 import PayrollRuns from './pages/PayrollRuns.tsx';
 import PayrollRunNew from './pages/PayrollRunNew.tsx';
 import PayrollRunDetail from './pages/PayrollRunDetail.tsx';
+import IncomeStatement from './pages/IncomeStatement.tsx';
+import BalanceSheet from './pages/BalanceSheet.tsx';
 import Currencies from './pages/Currencies.tsx';
 
 function Gate() {
@@ -83,6 +85,8 @@ function Gate() {
         <Route path="/payroll" element={<PayrollRuns />} />
         <Route path="/payroll/new" element={<PayrollRunNew />} />
         <Route path="/payroll/:id" element={<PayrollRunDetail />} />
+        <Route path="/income-statement" element={<IncomeStatement />} />
+        <Route path="/balance-sheet" element={<BalanceSheet />} />
         <Route path="/currencies" element={<Currencies />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
