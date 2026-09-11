@@ -1,10 +1,14 @@
-const money = new Intl.NumberFormat('ar-EG', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const int = new Intl.NumberFormat('ar-EG');
+// '-u-nu-latn' keeps Arabic grouping/decimal conventions but forces Western
+// (0-9) digits instead of Arabic-Indic (٠-٩) — the legacy app and every
+// report/invoice printout use Western digits, so the rebuild should too.
+const AR_LATN = 'ar-EG-u-nu-latn';
+const money = new Intl.NumberFormat(AR_LATN, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const int = new Intl.NumberFormat(AR_LATN);
 
 export const fmtMoney = (n: number | null | undefined) => money.format(Number(n ?? 0));
 export const fmtInt = (n: number | null | undefined) => int.format(Number(n ?? 0));
 export const fmtDate = (d: string | null | undefined) =>
-  d ? new Date(d).toLocaleDateString('ar-EG', { year: 'numeric', month: '2-digit', day: '2-digit' }) : '';
+  d ? new Date(d).toLocaleDateString(AR_LATN, { year: 'numeric', month: '2-digit', day: '2-digit' }) : '';
 
 export const today = () => new Date().toISOString().slice(0, 10);
 
