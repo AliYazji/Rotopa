@@ -8,6 +8,8 @@ import Dashboard from './pages/Dashboard.tsx';
 import Accounts from './pages/Accounts.tsx';
 import Journals from './pages/Journals.tsx';
 import JournalNew from './pages/JournalNew.tsx';
+import Vouchers from './pages/Vouchers.tsx';
+import VoucherNew from './pages/VoucherNew.tsx';
 import Currencies from './pages/Currencies.tsx';
 
 function Gate() {
@@ -21,6 +23,8 @@ function Gate() {
         <Route path="/accounts" element={<Accounts />} />
         <Route path="/journals" element={<Journals />} />
         <Route path="/journals/new" element={<JournalNew />} />
+        <Route path="/vouchers" element={<Vouchers />} />
+        <Route path="/vouchers/new" element={<VoucherNew />} />
         <Route path="/currencies" element={<Currencies />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

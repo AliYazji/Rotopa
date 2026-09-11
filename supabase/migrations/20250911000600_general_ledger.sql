@@ -440,6 +440,10 @@ begin
     raise exception 'only a posted entry can be voided' using errcode = '23514';
   end if;
 
+  -- source_type/source_id on the reversal deliberately do NOT copy the
+  -- original's (org_id, source_type, source_id) is unique per document, and
+  -- the reversal is not itself that document). void_of already carries the
+  -- real relationship; 'reversal'/e.id keeps the pair unique and traceable.
   insert into journal_entries (
     org_id, entry_no, entry_date, fiscal_period_id, branch_id, description,
     source_type, source_id, document_currency_id, void_of, created_by
@@ -447,7 +451,7 @@ begin
     e.org_id, app.next_seq(e.org_id, 'journal'), p_date,
     app.open_period_for(e.org_id, p_date), e.branch_id,
     'إلغاء قيد رقم ' || e.entry_no || coalesce(' — ' || p_reason, ''),
-    e.source_type, e.source_id, e.document_currency_id, e.id, auth.uid()
+    'reversal', e.id, e.document_currency_id, e.id, auth.uid()
   ) returning id into v_rev;
 
   insert into journal_lines (
