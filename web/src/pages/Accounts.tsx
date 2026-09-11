@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase.ts';
 import { useOrg } from '../lib/org.tsx';
@@ -41,7 +42,10 @@ export default function Accounts() {
 
   return (
     <>
-      <h1>دليل الحسابات</h1>
+      <div className="row" style={{ justifyContent: 'space-between' }}>
+        <h1>دليل الحسابات</h1>
+        <Link to="/accounts/new" className="btn btn-primary">حساب جديد</Link>
+      </div>
       <div className="field" style={{ maxWidth: 320 }}>
         <input placeholder="بحث بالاسم أو الرقم…" value={q} onChange={(e) => setQ(e.target.value)} />
       </div>
@@ -61,7 +65,7 @@ export default function Accounts() {
               <tr key={a.id}>
                 <td className="mono">{a.code}</td>
                 <td style={{ paddingInlineStart: `${(q ? 0 : a.depth) * 1.4 + 0.7}rem` }}>
-                  {a.is_postable ? a.name_ar : <strong>{a.name_ar}</strong>}
+                  <Link to={`/accounts/${a.id}`}>{a.is_postable ? a.name_ar : <strong>{a.name_ar}</strong>}</Link>
                 </td>
                 <td className="muted">{NATURE[a.nature]}</td>
                 <td>

@@ -6,6 +6,8 @@ import Login from './pages/Login.tsx';
 import Onboarding from './pages/Onboarding.tsx';
 import Dashboard from './pages/Dashboard.tsx';
 import Accounts from './pages/Accounts.tsx';
+import AccountNew from './pages/AccountNew.tsx';
+import AccountDetail from './pages/AccountDetail.tsx';
 import Customers from './pages/Customers.tsx';
 import Suppliers from './pages/Suppliers.tsx';
 import Employees from './pages/Employees.tsx';
@@ -33,6 +35,8 @@ function Gate() {
       <Routes>
         <Route path="/" element={<Dashboard />} />
         <Route path="/accounts" element={<Accounts />} />
+        <Route path="/accounts/new" element={<AccountNew />} />
+        <Route path="/accounts/:id" element={<AccountDetail />} />
         <Route path="/customers" element={<Customers />} />
         <Route path="/suppliers" element={<Suppliers />} />
         <Route path="/employees" element={<Employees />} />
