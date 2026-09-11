@@ -35,10 +35,32 @@ const ERROR_PATTERNS: [RegExp, (m: RegExpMatchArray) => string][] = [
   [/no fiscal period defined for (\S+)/, (m) => `لا توجد فترة محاسبية معرَّفة لتاريخ ${m[1]}.`],
   [/fiscal period for \S+ is (\w+), not open/, (m) => `الفترة المحاسبية لهذا التاريخ ${m[1] === 'closed' ? 'مقفلة' : m[1]} — لا يمكن الترحيل فيها.`],
   [/not authorized: (\S+) on org/, () => 'لا تملك الصلاحية اللازمة لهذا الإجراء.'],
-  [/account % ?is not postable/, () => 'هذا الحساب حساب تجميع (أب) ولا يقبل حركات مباشرة.'],
+  [/account \S+ is not postable/, () => 'هذا الحساب حساب تجميع (أب) ولا يقبل حركات مباشرة.'],
   [/does not currently accept transactions/, () => 'هذا الحساب موقوف مؤقتاً عن قبول الحركات.'],
-  [/a posted (entry|voucher|invoice|move) is immutable/, () => 'لا يمكن تعديل مستند مُرحّل — استخدم الإلغاء لعكسه.'],
-  [/only a draft (\w+) can be posted/, () => 'المستند مُرحّل أو ملغى بالفعل.'],
+  [/a posted (entry|voucher|invoice|move|payroll run) is immutable/, () => 'لا يمكن تعديل مستند مُرحّل — استخدم الإلغاء لعكسه.'],
+  [/only a draft ([\w ]+?) can be posted/, () => 'المستند مُرحّل أو ملغى بالفعل.'],
+  [/only a posted [\w ]+ can be voided/, () => 'الإلغاء يكون فقط للمستند المرحّل — هذا مسودة أو ملغى بالفعل.'],
+  [/^[\w ]+ has no lines$/, () => 'أضف سطراً واحداً على الأقل قبل الترحيل.'],
+  [/^[\w ]+ not found$/, () => 'المستند غير موجود — ربما حُذف أو أُعيد تحميل الصفحة بمعرّف قديم.'],
+
+  // "required account" family — each posting path lists exactly which
+  // account it needed and why, so translate each concrete message rather
+  // than a single generic catch-all.
+  [/a tax payable account is required/, () => 'حدد حساب ضريبة الدخل المستحقة — هذا الكشف فيه استقطاعات ضريبة.'],
+  [/a loan receivable account is required/, () => 'حدد حساب سلف الموظفين — هذا الكشف فيه استقطاعات سلف.'],
+  [/an other-deductions account is required/, () => 'حدد حساب الاستقطاعات الأخرى — هذا الكشف فيه استقطاعات متنوعة.'],
+  [/an employee on this run has no salary expense account and no default was given/,
+    () => 'أحد الموظفين بلا حساب مصروف رواتب خاص، وما حُدّد حساب افتراضي. حدد حساباً افتراضياً للكشف أو حساباً خاصاً لهذا الموظف.'],
+  [/an item on this invoice has no sales account and no default was given/,
+    () => 'أحد الأصناف بلا حساب مبيعات خاص، وما حُدّد حساب افتراضي. حدد حساباً افتراضياً للفاتورة أو حساباً خاصاً لهذا الصنف.'],
+  [/a proceeds account is required when proceeds > 0/, () => 'حدد حساب استلام العائد — أدخلت مبلغاً أكبر من صفر.'],
+  [/a gain\/loss account is required — proceeds \(([\d.]+)\) differ from net book value \(([\d.]+)\)/,
+    (m) => `حدد حساب أرباح/خسائر الاستبعاد — العائد (${fmtMoney(Number(m[1]))}) يختلف عن صافي القيمة الدفترية (${fmtMoney(Number(m[2]))}).`],
+  [/a bank account is required to clear a cheque/, () => 'حدد حساب البنك لتحصيل الشيك.'],
+
+  [/dealer \S+ is not marked as an employee/, () => 'هذا الطرف غير مسجّل كموظف — أضف صفة "موظف" له أولاً.'],
+  [/dealer is not marked as a customer/, () => 'هذا الطرف غير مسجّل كعميل.'],
+  [/dealer is not marked as a supplier/, () => 'هذا الطرف غير مسجّل كمورّد.'],
 ];
 export function translateError(message: string): string {
   for (const [re, fn] of ERROR_PATTERNS) {
