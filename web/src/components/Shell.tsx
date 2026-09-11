@@ -13,6 +13,7 @@ const nav = [
   { to: '/sales-invoices', label: 'فواتير المبيعات' },
   { to: '/purchase-invoices', label: 'فواتير المشتريات' },
   { to: '/fixed-assets', label: 'الأصول الثابتة' },
+  { to: '/payroll', label: 'الرواتب' },
   { to: '/vouchers', label: 'السندات' },
   { to: '/cheques', label: 'الشيكات' },
   { to: '/journals', label: 'القيود' },
