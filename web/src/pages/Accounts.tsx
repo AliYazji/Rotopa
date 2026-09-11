@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase.ts';
 import { useOrg } from '../lib/org.tsx';
@@ -19,6 +19,7 @@ const NATURE: Record<string, string> = { debit: 'مدين', credit: 'دائن', 
 
 export default function Accounts() {
   const { org } = useOrg();
+  const nav = useNavigate();
   const [q, setQ] = useState('');
   const { data, isLoading } = useQuery({
     queryKey: ['accounts', org?.id],
@@ -62,10 +63,10 @@ export default function Accounts() {
           <tbody>
             {isLoading && <tr><td colSpan={4} className="muted">جارٍ التحميل…</td></tr>}
             {rows.map((a) => (
-              <tr key={a.id}>
+              <tr key={a.id} className="rowlink" onClick={() => nav(`/accounts/${a.id}`)}>
                 <td className="mono">{a.code}</td>
                 <td style={{ paddingInlineStart: `${(q ? 0 : a.depth) * 1.4 + 0.7}rem` }}>
-                  <Link to={`/accounts/${a.id}`}>{a.is_postable ? a.name_ar : <strong>{a.name_ar}</strong>}</Link>
+                  {a.is_postable ? a.name_ar : <strong>{a.name_ar}</strong>}
                 </td>
                 <td className="muted">{NATURE[a.nature]}</td>
                 <td>

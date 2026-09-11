@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase.ts';
 import { useOrg } from '../lib/org.tsx';
@@ -18,6 +18,7 @@ interface CatOpt { id: string; name_ar: string; }
 
 export default function Items() {
   const { org } = useOrg();
+  const nav = useNavigate();
   const [q, setQ] = useState('');
   const [categoryId, setCategoryId] = useState('');
 
@@ -79,9 +80,9 @@ export default function Items() {
             {isLoading && <tr><td colSpan={5} className="muted">جارٍ التحميل…</td></tr>}
             {items?.length === 0 && !isLoading && <tr><td colSpan={5} className="muted">لا نتائج.</td></tr>}
             {items?.map((it) => (
-              <tr key={it.id}>
+              <tr key={it.id} className="rowlink" onClick={() => nav(`/items/${it.id}`)}>
                 <td className="mono">{it.code}</td>
-                <td><Link to={`/items/${it.id}`}>{it.name_ar}</Link></td>
+                <td>{it.name_ar}</td>
                 <td className="muted">{it.category?.name_ar ?? '—'}</td>
                 <td>{it.base_unit_name}</td>
                 <td className="num">{fmtMoney(it.sales_price)}</td>

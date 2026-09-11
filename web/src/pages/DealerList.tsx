@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase.ts';
 import { useOrg } from '../lib/org.tsx';
@@ -33,6 +33,7 @@ export function DealerList({
   newLabel: string;
 }) {
   const { org } = useOrg();
+  const nav = useNavigate();
   const [q, setQ] = useState('');
 
   const { data, isLoading } = useQuery({
@@ -87,9 +88,9 @@ export function DealerList({
             {isLoading && <tr><td colSpan={5} className="muted">جارٍ التحميل…</td></tr>}
             {rows.length === 0 && !isLoading && <tr><td colSpan={5} className="muted">لا نتائج.</td></tr>}
             {rows.map((d) => (
-              <tr key={d.id}>
+              <tr key={d.id} className="rowlink" onClick={() => nav(`/dealers/${d.id}`)}>
                 <td className="mono">{d.code}</td>
-                <td><Link to={`/dealers/${d.id}`}>{d.name_ar}</Link></td>
+                <td>{d.name_ar}</td>
                 <td>{otherRoles(d).map((r) => <span key={r} className="badge">{r}</span>)}</td>
                 <td className="mono">{d.phone}</td>
                 <td>{d.city}</td>

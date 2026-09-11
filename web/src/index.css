@@ -68,6 +68,9 @@ table { width: 100%; border-collapse: collapse; }
 th, td { text-align: right; padding: 0.5rem 0.7rem; border-bottom: 1px solid var(--line); }
 th { color: var(--faint); font-weight: 600; font-size: 0.82rem; }
 tbody tr:hover { background: var(--surface-2); }
+/* the whole row navigates, not just the linked cell inside it — every list
+   page uses this instead of relying on a small <Link> being precisely hit */
+tr.rowlink { cursor: pointer; }
 
 .badge {
   display: inline-block; padding: 0.1rem 0.5rem; border-radius: 999px;

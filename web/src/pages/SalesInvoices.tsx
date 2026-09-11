@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase.ts';
 import { useOrg } from '../lib/org.tsx';
@@ -13,6 +13,7 @@ const METHOD: Record<string, string> = { credit: 'آجل', cash: 'نقدي' };
 
 export default function SalesInvoices() {
   const { org } = useOrg();
+  const nav = useNavigate();
   const { data, isLoading } = useQuery({
     queryKey: ['sales-invoices', org?.id],
     enabled: !!org,
@@ -47,8 +48,8 @@ export default function SalesInvoices() {
             {isLoading && <tr><td colSpan={5} className="muted">جارٍ التحميل…</td></tr>}
             {data?.length === 0 && <tr><td colSpan={5} className="muted">لا فواتير بعد.</td></tr>}
             {data?.map((inv) => (
-              <tr key={inv.id}>
-                <td className="mono"><Link to={`/sales-invoices/${inv.id}`}>{inv.invoice_no}</Link></td>
+              <tr key={inv.id} className="rowlink" onClick={() => nav(`/sales-invoices/${inv.id}`)}>
+                <td className="mono">{inv.invoice_no}</td>
                 <td>{fmtDate(inv.invoice_date)}</td>
                 <td>{inv.dealer?.name_ar}</td>
                 <td>{METHOD[inv.payment_method]}</td>
