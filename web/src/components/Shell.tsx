@@ -38,6 +38,13 @@ const nav: { section: string | null; items: { to: string; label: string }[] }[] 
     ],
   },
   {
+    section: 'المطعم',
+    items: [
+      { to: '/outlets', label: 'المنافذ والطاولات' },
+      { to: '/pos-orders', label: 'طلبات الكاشير' },
+    ],
+  },
+  {
     section: 'المحاسبة',
     items: [
       { to: '/vouchers', label: 'السندات' },

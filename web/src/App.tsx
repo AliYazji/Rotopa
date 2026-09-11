@@ -46,6 +46,10 @@ import Rooms from './pages/Rooms.tsx';
 import Reservations from './pages/Reservations.tsx';
 import ReservationNew from './pages/ReservationNew.tsx';
 import ReservationDetail from './pages/ReservationDetail.tsx';
+import Outlets from './pages/Outlets.tsx';
+import PosOrders from './pages/PosOrders.tsx';
+import PosOrderNew from './pages/PosOrderNew.tsx';
+import PosOrderDetail from './pages/PosOrderDetail.tsx';
 import Currencies from './pages/Currencies.tsx';
 
 function Gate() {
@@ -97,6 +101,10 @@ function Gate() {
         <Route path="/reservations" element={<Reservations />} />
         <Route path="/reservations/new" element={<ReservationNew />} />
         <Route path="/reservations/:id" element={<ReservationDetail />} />
+        <Route path="/outlets" element={<Outlets />} />
+        <Route path="/pos-orders" element={<PosOrders />} />
+        <Route path="/pos-orders/new" element={<PosOrderNew />} />
+        <Route path="/pos-orders/:id" element={<PosOrderDetail />} />
         <Route path="/currencies" element={<Currencies />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
