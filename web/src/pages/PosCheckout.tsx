@@ -167,8 +167,11 @@ export default function PosCheckout() {
     if (!settings.warehouseId) return setErr('اختر المستودع من الإعدادات فوق');
     if (!settings.vatAccountId) return setErr('اختر حساب ضريبة المخرجات من الإعدادات فوق');
     if (overStockLine) return setErr(`الكمية المطلوبة لصنف "${overStockLine.name}" أكتر من المتوفر (${fmtMoney(overStockLine.onHand)}).`);
-    const effectiveDealerId = paymentType === 'credit' ? dealerId : walkinDealer?.id;
-    if (paymentType === 'credit' && !dealerId) return setErr('اختر الزبون للبيع الآجل');
+    // فوري defaults to the walk-in customer but can be any real customer too
+    // (a regular customer paying cash instead of on credit); آجل must be a
+    // real, specific customer — crediting the anonymous walk-in makes no sense.
+    const effectiveDealerId = dealerId || (paymentType === 'cash' ? walkinDealer?.id : '');
+    if (paymentType === 'credit' && (!dealerId || dealerId === walkinDealer?.id)) return setErr('اختر زبوناً مسجّلاً للبيع الآجل');
     if (paymentType === 'cash' && !settings.cashAccountId) return setErr('اختر الصندوق');
     if (!effectiveDealerId) return setErr('ما في زبون نقدي عام معرَّف بعد — أنشئه من الإعدادات فوق');
 
@@ -314,15 +317,20 @@ export default function PosCheckout() {
               </select>
             </div>
           )}
-          {paymentType === 'credit' && (
-            <div className="field" style={{ marginTop: '0.5rem' }}>
-              <label>الزبون</label>
-              <select value={dealerId} onChange={(e) => setDealerId(e.target.value)}>
-                <option value="">—</option>
-                {customers?.map((c) => <option key={c.id} value={c.id}>{c.name_ar}</option>)}
-              </select>
-            </div>
-          )}
+          <div className="field" style={{ marginTop: '0.5rem' }}>
+            <label>{paymentType === 'cash' ? 'الزبون (اختياري — افتراضياً زبون نقدي عام)' : 'الزبون'}</label>
+            <select value={dealerId} onChange={(e) => setDealerId(e.target.value)}>
+              <option value="">{paymentType === 'cash' ? 'زبون نقدي عام (بدون تحديد)' : '— اختر زبوناً —'}</option>
+              {customers?.filter((c) => c.id !== walkinDealer?.id).map((c) => (
+                <option key={c.id} value={c.id}>{c.name_ar}</option>
+              ))}
+            </select>
+            {paymentType === 'cash' && (
+              <p className="muted" style={{ fontSize: '0.78rem', marginTop: '0.25rem' }}>
+                اتركه فاضي لبيع نقدي عادي، أو اختر زبوناً مسجّلاً إذا بدك تنسب هاي الفاتورة إله مع إنو دفع فوري.
+              </p>
+            )}
+          </div>
 
           {err && <p className="error">{err}</p>}
           <button className="btn-primary" disabled={busy || cart.length === 0} onClick={checkout} style={{ marginTop: '0.75rem' }}>
