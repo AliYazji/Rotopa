@@ -6,7 +6,9 @@ import Login from './pages/Login.tsx';
 import Onboarding from './pages/Onboarding.tsx';
 import Dashboard from './pages/Dashboard.tsx';
 import Accounts from './pages/Accounts.tsx';
-import Dealers from './pages/Dealers.tsx';
+import Customers from './pages/Customers.tsx';
+import Suppliers from './pages/Suppliers.tsx';
+import Employees from './pages/Employees.tsx';
 import DealerNew from './pages/DealerNew.tsx';
 import DealerDetail from './pages/DealerDetail.tsx';
 import Journals from './pages/Journals.tsx';
@@ -26,7 +28,9 @@ function Gate() {
       <Routes>
         <Route path="/" element={<Dashboard />} />
         <Route path="/accounts" element={<Accounts />} />
-        <Route path="/dealers" element={<Dealers />} />
+        <Route path="/customers" element={<Customers />} />
+        <Route path="/suppliers" element={<Suppliers />} />
+        <Route path="/employees" element={<Employees />} />
         <Route path="/dealers/new" element={<DealerNew />} />
         <Route path="/dealers/:id" element={<DealerDetail />} />
         <Route path="/journals" element={<Journals />} />

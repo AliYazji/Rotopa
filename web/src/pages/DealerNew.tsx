@@ -1,19 +1,27 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase.ts';
 import { useOrg } from '../lib/org.tsx';
 
 interface AccOpt { id: string; code: string; name_ar: string; }
 
+type Role = 'is_customer' | 'is_supplier' | 'is_employee';
+const TITLE: Record<Role, string> = { is_customer: 'عميل جديد', is_supplier: 'مورد جديد', is_employee: 'موظف جديد' };
+const LIST_PATH: Record<Role, string> = { is_customer: '/customers', is_supplier: '/suppliers', is_employee: '/employees' };
+
 export default function DealerNew() {
   const { org } = useOrg();
   const nav = useNavigate();
+  const [params] = useSearchParams();
+  const role = (['is_customer', 'is_supplier', 'is_employee'].includes(params.get('role') ?? '')
+    ? params.get('role')
+    : 'is_customer') as Role;
 
   const [name, setName] = useState('');
-  const [isCustomer, setIsCustomer] = useState(true);
-  const [isSupplier, setIsSupplier] = useState(false);
-  const [isEmployee, setIsEmployee] = useState(false);
+  const [isCustomer, setIsCustomer] = useState(role === 'is_customer');
+  const [isSupplier, setIsSupplier] = useState(role === 'is_supplier');
+  const [isEmployee, setIsEmployee] = useState(role === 'is_employee');
   const [parentAccountId, setParentAccountId] = useState('');
   const [creditLimit, setCreditLimit] = useState('');
   const [phone, setPhone] = useState('');
@@ -59,7 +67,7 @@ export default function DealerNew() {
         p_tax_no: taxNo || null,
       });
       if (error) throw error;
-      nav('/dealers');
+      nav(LIST_PATH[role]);
     } catch (e) {
       setErr((e as Error).message);
     } finally {
@@ -69,7 +77,7 @@ export default function DealerNew() {
 
   return (
     <>
-      <h1>طرف جديد</h1>
+      <h1>{TITLE[role]}</h1>
       <div className="card" style={{ maxWidth: 560 }}>
         <div className="field">
           <label>الاسم</label>
