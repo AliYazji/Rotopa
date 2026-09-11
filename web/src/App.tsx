@@ -30,6 +30,7 @@ import StockMoveDetail from './pages/StockMoveDetail.tsx';
 import SalesInvoices from './pages/SalesInvoices.tsx';
 import SalesInvoiceNew from './pages/SalesInvoiceNew.tsx';
 import SalesInvoiceDetail from './pages/SalesInvoiceDetail.tsx';
+import PosCheckout from './pages/PosCheckout.tsx';
 import PurchaseInvoices from './pages/PurchaseInvoices.tsx';
 import PurchaseInvoiceNew from './pages/PurchaseInvoiceNew.tsx';
 import PurchaseInvoiceDetail from './pages/PurchaseInvoiceDetail.tsx';
@@ -76,6 +77,7 @@ function Gate() {
         <Route path="/sales-invoices" element={<SalesInvoices />} />
         <Route path="/sales-invoices/new" element={<SalesInvoiceNew />} />
         <Route path="/sales-invoices/:id" element={<SalesInvoiceDetail />} />
+        <Route path="/pos" element={<PosCheckout />} />
         <Route path="/purchase-invoices" element={<PurchaseInvoices />} />
         <Route path="/purchase-invoices/new" element={<PurchaseInvoiceNew />} />
         <Route path="/purchase-invoices/:id" element={<PurchaseInvoiceDetail />} />
