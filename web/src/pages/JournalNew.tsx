@@ -37,7 +37,10 @@ export default function JournalNew() {
   const totals = useMemo(() => {
     const d = lines.reduce((s, l) => s + (parseFloat(l.debit) || 0), 0);
     const c = lines.reduce((s, l) => s + (parseFloat(l.credit) || 0), 0);
-    return { d, c, balanced: d === c && d > 0 };
+    // Compare at cent precision — summing floats can leave d and c a
+    // fraction of a cent apart even when every line is exact, so a raw
+    // `d === c` falsely flags a balanced entry as unbalanced.
+    return { d, c, balanced: Math.round(d * 100) === Math.round(c * 100) && d > 0 };
   }, [lines]);
 
   function setLine(i: number, patch: Partial<Line>) {

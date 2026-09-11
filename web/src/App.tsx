@@ -15,8 +15,10 @@ import DealerNew from './pages/DealerNew.tsx';
 import DealerDetail from './pages/DealerDetail.tsx';
 import Journals from './pages/Journals.tsx';
 import JournalNew from './pages/JournalNew.tsx';
+import JournalDetail from './pages/JournalDetail.tsx';
 import Vouchers from './pages/Vouchers.tsx';
 import VoucherNew from './pages/VoucherNew.tsx';
+import VoucherDetail from './pages/VoucherDetail.tsx';
 import Cheques from './pages/Cheques.tsx';
 import ChequeNew from './pages/ChequeNew.tsx';
 import Items from './pages/Items.tsx';
@@ -24,6 +26,7 @@ import ItemNew from './pages/ItemNew.tsx';
 import ItemDetail from './pages/ItemDetail.tsx';
 import StockMoves from './pages/StockMoves.tsx';
 import StockMoveNew from './pages/StockMoveNew.tsx';
+import StockMoveDetail from './pages/StockMoveDetail.tsx';
 import SalesInvoices from './pages/SalesInvoices.tsx';
 import SalesInvoiceNew from './pages/SalesInvoiceNew.tsx';
 import SalesInvoiceDetail from './pages/SalesInvoiceDetail.tsx';
@@ -47,8 +50,10 @@ function Gate() {
         <Route path="/dealers/:id" element={<DealerDetail />} />
         <Route path="/journals" element={<Journals />} />
         <Route path="/journals/new" element={<JournalNew />} />
+        <Route path="/journals/:id" element={<JournalDetail />} />
         <Route path="/vouchers" element={<Vouchers />} />
         <Route path="/vouchers/new" element={<VoucherNew />} />
+        <Route path="/vouchers/:id" element={<VoucherDetail />} />
         <Route path="/cheques" element={<Cheques />} />
         <Route path="/cheques/new" element={<ChequeNew />} />
         <Route path="/items" element={<Items />} />
@@ -56,6 +61,7 @@ function Gate() {
         <Route path="/items/:id" element={<ItemDetail />} />
         <Route path="/stock-moves" element={<StockMoves />} />
         <Route path="/stock-moves/new" element={<StockMoveNew />} />
+        <Route path="/stock-moves/:id" element={<StockMoveDetail />} />
         <Route path="/sales-invoices" element={<SalesInvoices />} />
         <Route path="/sales-invoices/new" element={<SalesInvoiceNew />} />
         <Route path="/sales-invoices/:id" element={<SalesInvoiceDetail />} />

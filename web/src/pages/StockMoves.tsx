@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase.ts';
 import { useOrg } from '../lib/org.tsx';
@@ -17,6 +17,7 @@ const STATUS: Record<string, string> = { draft: 'مسودة', posted: 'مرحّ�
 
 export default function StockMoves() {
   const { org } = useOrg();
+  const nav = useNavigate();
   const { data, isLoading } = useQuery({
     queryKey: ['stock-moves', org?.id],
     enabled: !!org,
@@ -55,7 +56,7 @@ export default function StockMoves() {
             {isLoading && <tr><td colSpan={5} className="muted">جارٍ التحميل…</td></tr>}
             {data?.length === 0 && <tr><td colSpan={5} className="muted">لا حركات بعد.</td></tr>}
             {data?.map((m) => (
-              <tr key={m.id}>
+              <tr key={m.id} className="rowlink" onClick={() => nav(`/stock-moves/${m.id}`)}>
                 <td className="mono">{m.move_no}</td>
                 <td>{MOVE_TYPE[m.move_type] ?? m.move_type}</td>
                 <td>{fmtDate(m.move_date)}</td>

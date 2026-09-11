@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase.ts';
 import { useOrg } from '../lib/org.tsx';
@@ -17,6 +17,7 @@ const STATUS: Record<string, string> = { draft: 'مسودة', posted: 'مرحّ�
 
 export default function Journals() {
   const { org } = useOrg();
+  const nav = useNavigate();
   const { data, isLoading } = useQuery({
     queryKey: ['journals', org?.id],
     enabled: !!org,
@@ -52,7 +53,7 @@ export default function Journals() {
             {isLoading && <tr><td colSpan={5} className="muted">جارٍ التحميل…</td></tr>}
             {data?.length === 0 && <tr><td colSpan={5} className="muted">لا قيود بعد.</td></tr>}
             {data?.map((e) => (
-              <tr key={e.id}>
+              <tr key={e.id} className="rowlink" onClick={() => nav(`/journals/${e.id}`)}>
                 <td className="mono">{e.entry_no}</td>
                 <td>{fmtDate(e.entry_date)}</td>
                 <td>{e.description}</td>

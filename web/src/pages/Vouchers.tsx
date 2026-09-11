@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase.ts';
 import { useOrg } from '../lib/org.tsx';
@@ -20,6 +20,7 @@ const TYPE: Record<string, string> = { receipt: 'قبض', payment: 'صرف' };
 
 export default function Vouchers() {
   const { org } = useOrg();
+  const nav = useNavigate();
   const { data, isLoading } = useQuery({
     queryKey: ['vouchers', org?.id],
     enabled: !!org,
@@ -58,7 +59,7 @@ export default function Vouchers() {
             {isLoading && <tr><td colSpan={5} className="muted">جارٍ التحميل…</td></tr>}
             {data?.length === 0 && <tr><td colSpan={5} className="muted">لا سندات بعد.</td></tr>}
             {data?.map((v) => (
-              <tr key={v.id}>
+              <tr key={v.id} className="rowlink" onClick={() => nav(`/vouchers/${v.id}`)}>
                 <td className="mono">{v.voucher_no}</td>
                 <td>{TYPE[v.voucher_type]}</td>
                 <td>{fmtDate(v.voucher_date)}</td>
