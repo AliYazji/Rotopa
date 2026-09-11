@@ -9,11 +9,11 @@ async function main() {
 
   const checks: [string, number, number][] = [];
 
-  const legacyAccounts = (await q<{ n: number }>(`SELECT COUNT(*) n FROM master_acc WHERE ISNULL(delete_flage,0)=0`))[0].n;
+  const legacyAccounts = (await q<{ n: number }>(`SELECT COUNT(*) n FROM master_acc WHERE ISNULL(delete_flage,0)=0`)).at(0)!.n;
   const ourAccounts = (await pool.query(`select count(*)::int n from accounts where org_id = $1`, [org])).rows[0].n;
   checks.push(['accounts', legacyAccounts, ourAccounts]);
 
-  const legacyDealers = (await q<{ n: number }>(`SELECT COUNT(DISTINCT Dealer_no) n FROM Dealers_tb`))[0].n;
+  const legacyDealers = (await q<{ n: number }>(`SELECT COUNT(DISTINCT Dealer_no) n FROM Dealers_tb`)).at(0)!.n;
   const ourDealers = (await pool.query(`select count(*)::int n from dealers where org_id = $1`, [org])).rows[0].n;
   checks.push(['dealers (distinct)', legacyDealers, ourDealers]);
 
