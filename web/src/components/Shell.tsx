@@ -12,6 +12,7 @@ const nav = [
   { to: '/stock-moves', label: 'حركات المخزون' },
   { to: '/sales-invoices', label: 'فواتير المبيعات' },
   { to: '/purchase-invoices', label: 'فواتير المشتريات' },
+  { to: '/fixed-assets', label: 'الأصول الثابتة' },
   { to: '/vouchers', label: 'السندات' },
   { to: '/cheques', label: 'الشيكات' },
   { to: '/journals', label: 'القيود' },

@@ -33,6 +33,9 @@ import SalesInvoiceDetail from './pages/SalesInvoiceDetail.tsx';
 import PurchaseInvoices from './pages/PurchaseInvoices.tsx';
 import PurchaseInvoiceNew from './pages/PurchaseInvoiceNew.tsx';
 import PurchaseInvoiceDetail from './pages/PurchaseInvoiceDetail.tsx';
+import FixedAssets from './pages/FixedAssets.tsx';
+import FixedAssetNew from './pages/FixedAssetNew.tsx';
+import FixedAssetDetail from './pages/FixedAssetDetail.tsx';
 import Currencies from './pages/Currencies.tsx';
 
 function Gate() {
@@ -71,6 +74,9 @@ function Gate() {
         <Route path="/purchase-invoices" element={<PurchaseInvoices />} />
         <Route path="/purchase-invoices/new" element={<PurchaseInvoiceNew />} />
         <Route path="/purchase-invoices/:id" element={<PurchaseInvoiceDetail />} />
+        <Route path="/fixed-assets" element={<FixedAssets />} />
+        <Route path="/fixed-assets/new" element={<FixedAssetNew />} />
+        <Route path="/fixed-assets/:id" element={<FixedAssetDetail />} />
         <Route path="/currencies" element={<Currencies />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
