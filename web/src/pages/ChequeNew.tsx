@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase.ts';
 import { useOrg } from '../lib/org.tsx';
-import { today } from '../lib/format.ts';
+import { today, translateError } from '../lib/format.ts';
 
 interface AccOpt { id: string; code: string; name_ar: string; }
 interface DealerOpt { id: string; code: string; name_ar: string; is_customer: boolean; is_supplier: boolean; }
@@ -70,7 +70,7 @@ export default function ChequeNew() {
       if (error) throw error;
       nav('/cheques');
     } catch (e) {
-      setErr((e as Error).message);
+      setErr(translateError((e as Error).message));
     } finally {
       setBusy(false);
     }

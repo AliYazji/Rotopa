@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase.ts';
-import { fmtDate, fmtMoney } from '../lib/format.ts';
+import { fmtDate, fmtMoney, translateError } from '../lib/format.ts';
 
 interface Account {
   id: string; code: string; name_ar: string; name_en: string | null;
@@ -82,7 +82,7 @@ export default function AccountDetail() {
       await qc.invalidateQueries({ queryKey: ['accounts'] });
       setEditing(false);
     } catch (e) {
-      setErr((e as Error).message);
+      setErr(translateError((e as Error).message));
     } finally {
       setBusy(false);
     }

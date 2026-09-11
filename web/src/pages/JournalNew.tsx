@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase.ts';
 import { useOrg } from '../lib/org.tsx';
-import { fmtMoney, today } from '../lib/format.ts';
+import { fmtMoney, today, translateError } from '../lib/format.ts';
 
 interface AccOpt { id: string; code: string; name_ar: string; }
 interface Line { account_id: string; debit: string; credit: string; description: string; }
@@ -75,7 +75,7 @@ export default function JournalNew() {
       }
       nav('/journals');
     } catch (e) {
-      setErr((e as Error).message);
+      setErr(translateError((e as Error).message));
     } finally {
       setBusy(false);
     }

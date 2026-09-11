@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase.ts';
 import { useOrg } from '../lib/org.tsx';
-import { fmtMoney, today } from '../lib/format.ts';
+import { fmtMoney, today, translateError } from '../lib/format.ts';
 
 interface TBRow {
   account_id: string;
@@ -31,7 +31,7 @@ export default function Dashboard() {
     <>
       <h1>ميزان المراجعة</h1>
       <p className="muted">حتى {today()}</p>
-      {error && <p className="error">{(error as Error).message}</p>}
+      {error && <p className="error">{translateError((error as Error).message)}</p>}
       <div className="card" style={{ padding: 0, overflowX: 'auto' }}>
         <table>
           <thead>

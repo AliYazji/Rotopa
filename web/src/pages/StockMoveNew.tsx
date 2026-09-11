@@ -3,15 +3,15 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase.ts';
 import { useOrg } from '../lib/org.tsx';
-import { today } from '../lib/format.ts';
+import { fmtMoney, today, translateError } from '../lib/format.ts';
 import { ItemPicker } from '../components/ItemPicker.tsx';
 
 interface WhOpt { id: string; code: string; name_ar: string; }
 interface AccOpt { id: string; code: string; name_ar: string; }
 
-interface Line { key: number; itemId: string; itemLabel: string; qty: string; unitCost: string }
+interface Line { key: number; itemId: string; itemLabel: string; qty: string; unitCost: string; onHand: number | null }
 let keySeq = 0;
-const emptyLine = (): Line => ({ key: keySeq++, itemId: '', itemLabel: '', qty: '', unitCost: '' });
+const emptyLine = (): Line => ({ key: keySeq++, itemId: '', itemLabel: '', qty: '', unitCost: '', onHand: null });
 
 const TITLE: Record<string, string> = {
   opening: 'رصيد افتتاحي للمخزون', adjustment_in: 'إضافة للمخزون',
@@ -70,6 +70,10 @@ export default function StockMoveNew() {
       if (type === 'transfer' && (!fromWarehouseId || !toWarehouseId)) throw new Error('اختر مستودع المصدر والوجهة');
       if (type !== 'transfer' && !warehouseId) throw new Error('اختر المستودع');
       if (NEEDS_COST[type] && validLines.some((l) => !(parseFloat(l.unitCost) >= 0))) throw new Error('كل سطر يحتاج تكلفة');
+      if (type === 'adjustment_out' || type === 'transfer') {
+        const short = validLines.find((l) => l.onHand !== null && (parseFloat(l.qty) || 0) > l.onHand);
+        if (short) throw new Error(`الكمية المطلوبة لصنف "${short.itemLabel}" أكتر من المتوفر (${fmtMoney(short.onHand)}).`);
+      }
 
       let payload: any[];
       if (type === 'transfer') {
@@ -98,7 +102,7 @@ export default function StockMoveNew() {
       if (pErr) throw pErr;
       nav('/stock-moves');
     } catch (e) {
-      setErr((e as Error).message);
+      setErr(translateError((e as Error).message));
     } finally {
       setBusy(false);
     }
@@ -155,14 +159,31 @@ export default function StockMoveNew() {
             </tr>
           </thead>
           <tbody>
-            {lines.map((l) => (
-              <tr key={l.key}>
-                <td><ItemPicker initialLabel={l.itemLabel} onPick={(it) => setLine(l.key, { itemId: it.id, itemLabel: `${it.code} · ${it.name_ar}` })} /></td>
-                <td><input className="num" inputMode="decimal" value={l.qty} onChange={(e) => setLine(l.key, { qty: e.target.value })} /></td>
-                {NEEDS_COST[type] && <td><input className="num" inputMode="decimal" value={l.unitCost} onChange={(e) => setLine(l.key, { unitCost: e.target.value })} /></td>}
-                <td>{lines.length > 1 && <button type="button" onClick={() => setLines((ls) => ls.filter((x) => x.key !== l.key))}>×</button>}</td>
-              </tr>
-            ))}
+            {lines.map((l) => {
+              const checkStock = type === 'adjustment_out' || type === 'transfer';
+              const relevantWarehouse = type === 'transfer' ? fromWarehouseId : warehouseId;
+              const qtyNum = parseFloat(l.qty) || 0;
+              const overStock = checkStock && l.onHand !== null && qtyNum > l.onHand;
+              return (
+                <tr key={l.key}>
+                  <td>
+                    <ItemPicker
+                      initialLabel={l.itemLabel}
+                      warehouseId={relevantWarehouse || undefined}
+                      onPick={(it) => setLine(l.key, { itemId: it.id, itemLabel: `${it.code} · ${it.name_ar}`, onHand: it.onHand })}
+                    />
+                    {checkStock && l.itemId && l.onHand !== null && (
+                      <div className={overStock ? 'error' : 'muted'} style={{ fontSize: '0.78rem', marginTop: '0.2rem' }}>
+                        المتوفر: {fmtMoney(l.onHand)}
+                      </div>
+                    )}
+                  </td>
+                  <td><input className="num" inputMode="decimal" value={l.qty} onChange={(e) => setLine(l.key, { qty: e.target.value })} style={overStock ? { borderColor: 'var(--danger)' } : undefined} /></td>
+                  {NEEDS_COST[type] && <td><input className="num" inputMode="decimal" value={l.unitCost} onChange={(e) => setLine(l.key, { unitCost: e.target.value })} /></td>}
+                  <td>{lines.length > 1 && <button type="button" onClick={() => setLines((ls) => ls.filter((x) => x.key !== l.key))}>×</button>}</td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
         <button type="button" onClick={() => setLines((ls) => [...ls, emptyLine()])} style={{ marginTop: '0.5rem' }}>+ سطر</button>

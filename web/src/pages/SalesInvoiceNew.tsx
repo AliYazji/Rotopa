@@ -3,16 +3,16 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase.ts';
 import { useOrg } from '../lib/org.tsx';
-import { fmtMoney, today } from '../lib/format.ts';
+import { fmtMoney, today, translateError } from '../lib/format.ts';
 import { ItemPicker } from '../components/ItemPicker.tsx';
 
 interface DealerOpt { id: string; code: string; name_ar: string; }
 interface WhOpt { id: string; code: string; name_ar: string; }
 interface AccOpt { id: string; code: string; name_ar: string; }
 
-interface Line { key: number; itemId: string; itemLabel: string; qty: string; unitPrice: string; discountPct: string }
+interface Line { key: number; itemId: string; itemLabel: string; qty: string; unitPrice: string; discountPct: string; onHand: number | null }
 let keySeq = 0;
-const emptyLine = (): Line => ({ key: keySeq++, itemId: '', itemLabel: '', qty: '1', unitPrice: '', discountPct: '0' });
+const emptyLine = (): Line => ({ key: keySeq++, itemId: '', itemLabel: '', qty: '1', unitPrice: '', discountPct: '0', onHand: null });
 
 export default function SalesInvoiceNew() {
   const { org } = useOrg();
@@ -77,6 +77,8 @@ export default function SalesInvoiceNew() {
       if (paymentMethod === 'cash' && !cashAccountId) throw new Error('اختر حساب الصندوق/البنك للبيع النقدي');
       const validLines = lines.filter((l) => l.itemId && (parseFloat(l.qty) || 0) > 0 && parseFloat(l.unitPrice) >= 0);
       if (validLines.length === 0) throw new Error('أضف صنفاً واحداً على الأقل');
+      const short = validLines.find((l) => l.onHand !== null && (parseFloat(l.qty) || 0) > l.onHand);
+      if (short) throw new Error(`الكمية المطلوبة لصنف "${short.itemLabel}" أكتر من المتوفر بالمستودع (${fmtMoney(short.onHand)}).`);
 
       const { data: invoiceId, error } = await supabase.rpc('create_sales_invoice', {
         p_org: org!.id, p_invoice_date: date, p_dealer_id: dealerId, p_warehouse_id: warehouseId,
@@ -95,7 +97,7 @@ export default function SalesInvoiceNew() {
       if (pErr) throw pErr;
       nav('/sales-invoices');
     } catch (e) {
-      setErr((e as Error).message);
+      setErr(translateError((e as Error).message));
     } finally {
       setBusy(false);
     }
@@ -155,18 +157,27 @@ export default function SalesInvoiceNew() {
           <tbody>
             {lines.map((l) => {
               const lineTotal = (parseFloat(l.qty) || 0) * (parseFloat(l.unitPrice) || 0) * (1 - (parseFloat(l.discountPct) || 0) / 100);
+              const qtyNum = parseFloat(l.qty) || 0;
+              const overStock = l.onHand !== null && qtyNum > l.onHand;
               return (
                 <tr key={l.key}>
                   <td>
                     <ItemPicker
                       initialLabel={l.itemLabel}
+                      warehouseId={warehouseId || undefined}
                       onPick={(it) => setLine(l.key, {
                         itemId: it.id, itemLabel: `${it.code} · ${it.name_ar}`,
                         unitPrice: l.unitPrice || String(it.sales_price),
+                        onHand: it.onHand,
                       })}
                     />
+                    {l.itemId && l.onHand !== null && (
+                      <div className={overStock ? 'error' : 'muted'} style={{ fontSize: '0.78rem', marginTop: '0.2rem' }}>
+                        المتوفر بالمستودع: {fmtMoney(l.onHand)}
+                      </div>
+                    )}
                   </td>
-                  <td><input className="num" inputMode="decimal" value={l.qty} onChange={(e) => setLine(l.key, { qty: e.target.value })} /></td>
+                  <td><input className="num" inputMode="decimal" value={l.qty} onChange={(e) => setLine(l.key, { qty: e.target.value })} style={overStock ? { borderColor: 'var(--danger)' } : undefined} /></td>
                   <td><input className="num" inputMode="decimal" value={l.unitPrice} onChange={(e) => setLine(l.key, { unitPrice: e.target.value })} /></td>
                   <td><input className="num" inputMode="decimal" value={l.discountPct} onChange={(e) => setLine(l.key, { discountPct: e.target.value })} /></td>
                   <td className="num">{fmtMoney(lineTotal)}</td>

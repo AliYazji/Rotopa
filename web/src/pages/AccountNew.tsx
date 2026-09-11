@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase.ts';
 import { useOrg } from '../lib/org.tsx';
+import { translateError } from '../lib/format.ts';
 
 interface AccOpt { id: string; code: string; name_ar: string; is_postable: boolean; }
 interface CatOpt { id: string; name_ar: string; }
@@ -67,7 +68,7 @@ export default function AccountNew() {
       if (error) throw error;
       nav('/accounts');
     } catch (e) {
-      setErr((e as Error).message);
+      setErr(translateError((e as Error).message));
     } finally {
       setBusy(false);
     }
