@@ -31,6 +31,13 @@ const nav: { section: string | null; items: { to: string; label: string }[] }[] 
     ],
   },
   {
+    section: 'الفندقة',
+    items: [
+      { to: '/rooms', label: 'الغرف وأنواعها' },
+      { to: '/reservations', label: 'الحجوزات' },
+    ],
+  },
+  {
     section: 'المحاسبة',
     items: [
       { to: '/vouchers', label: 'السندات' },

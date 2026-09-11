@@ -42,6 +42,10 @@ import PayrollRunNew from './pages/PayrollRunNew.tsx';
 import PayrollRunDetail from './pages/PayrollRunDetail.tsx';
 import IncomeStatement from './pages/IncomeStatement.tsx';
 import BalanceSheet from './pages/BalanceSheet.tsx';
+import Rooms from './pages/Rooms.tsx';
+import Reservations from './pages/Reservations.tsx';
+import ReservationNew from './pages/ReservationNew.tsx';
+import ReservationDetail from './pages/ReservationDetail.tsx';
 import Currencies from './pages/Currencies.tsx';
 
 function Gate() {
@@ -89,6 +93,10 @@ function Gate() {
         <Route path="/payroll/:id" element={<PayrollRunDetail />} />
         <Route path="/income-statement" element={<IncomeStatement />} />
         <Route path="/balance-sheet" element={<BalanceSheet />} />
+        <Route path="/rooms" element={<Rooms />} />
+        <Route path="/reservations" element={<Reservations />} />
+        <Route path="/reservations/new" element={<ReservationNew />} />
+        <Route path="/reservations/:id" element={<ReservationDetail />} />
         <Route path="/currencies" element={<Currencies />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
