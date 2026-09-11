@@ -32,7 +32,7 @@ done
 
 echo "── running tests ──"
 fail=0
-for t in supabase/tests/[0-9][0-9]_*.sql; do
+for t in supabase/tests/[0-9]*_*.sql; do
   [ "$(basename "$t")" = "00_shim.sql" ] && continue
   out=$(RUN "${DB[@]}" -v ON_ERROR_STOP=1 < "$t" 2>&1) || { echo "  ✗ $(basename "$t")"; echo "$out" | sed 's/^/      /'; fail=1; continue; }
   echo "  ✓ $(basename "$t")"
