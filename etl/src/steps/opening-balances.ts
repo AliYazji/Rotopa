@@ -3,17 +3,23 @@ import { pool, tx, iso } from '../target.ts';
 
 /**
  * One opening journal entry, dated at the start of the organization's current
- * fiscal year, carrying each account's net balance from the legacy ledger
- * (acc_trn, summed to date — the legacy backup has no reliable stored
- * balance: master_acc.BLANCE / initial_balance are both empty in this dump).
+ * fiscal year, carrying forward the legacy ledger into the new chart.
  *
- * acc_trn.DBAmount/CRAmount are already in the account's own currency, so a
- * foreign-currency account posts in its own currency at the exchange rate on
- * the cutover date (fx_rate) — same as any other journal line.
+ * The legacy backup has no usable stored balance (master_acc.initial_balance
+ * and .BLANCE are both empty in this dump), so each account's balance is the
+ * net of its full acc_trn history.
  *
- * Any residual mismatch (the legacy ledger itself is off by a few cents — see
- * docs/data-model.md) is posted to an explicit "opening balance variance"
- * account instead of silently dropped, so it stays auditable.
+ * Income and expense accounts are NOT carried forward individually — a real
+ * cut-over closes them first. We classify by the legacy master_acc.class_acc
+ * (4 = trading/income, 5 = expense; confirmed against every account in the
+ * source before trusting it — see etl/README.md) and net them into one line
+ * against a retained-earnings account, exactly like a year-end closing entry.
+ * Only balance-sheet accounts (asset/liability/equity) are carried forward
+ * one-for-one.
+ *
+ * Anything left over — accounts absent from the migrated chart, and the plug
+ * needed to force the entry to balance exactly — goes to an explicit
+ * "opening balance variance" account instead of being dropped.
  */
 export async function migrateOpeningBalances(orgId: string): Promise<void> {
   const already = await pool.query(
@@ -31,6 +37,12 @@ export async function migrateOpeningBalances(orgId: string): Promise<void> {
     WHERE ISNULL(delete_flage, 0) = 0
     GROUP BY ACC_NO
     HAVING SUM(DBAmount) <> SUM(CRAmount)`);
+
+  const legacyClass = await q<{ acc_no: string; class_acc: number | null }>(
+    `SELECT acc_no, class_acc FROM master_acc`,
+  );
+  const classByCode = new Map(legacyClass.map((r) => [r.acc_no.trim(), r.class_acc]));
+  const isIncomeStatement = (code: string) => [4, 5].includes(classByCode.get(code) ?? -1);
 
   const accRows = await pool.query(
     `select id, legacy_code, is_postable, currency_id from accounts where org_id = $1`,
@@ -57,33 +69,51 @@ export async function migrateOpeningBalances(orgId: string): Promise<void> {
     return rateCache.get(currencyId)!;
   }
 
-  // receives both unmatched legacy accounts and the plug that forces this entry to balance
-  const suspense = await ensureVarianceAccount(orgId);
+  const variance = await ensureAccount(orgId, 'OB-VAR', 'فروقات الأرصدة الافتتاحية', 'Opening balance variance');
+  const retained = await ensureAccount(orgId, 'RE', 'الأرباح المرحّلة (افتتاحية)', 'Retained earnings — opening');
 
   interface Line { account_id: string; currency_id: string; rate: number; fc: number; }
   const lines: Line[] = [];
-  let matched = 0, skipped = 0;
+  let matchedBS = 0, closedPnL = 0, skipped = 0;
+  let netIncomeBase = 0; // sum of P&L account net_base (revenue negative, expense positive)
 
   for (const r of legacyBalances) {
     const net = Number(r.db) - Number(r.cr);
     if (Math.abs(net) < 0.0001) continue;
-    const acc = accByCode.get(r.ACC_NO.trim());
+    const code = r.ACC_NO.trim();
+    const acc = accByCode.get(code);
+
     if (!acc || !acc.postable) {
       skipped++;
-      console.warn(`  ! account ${r.ACC_NO} (balance ${net.toFixed(3)}) not found/not postable, folded into variance`);
-      lines.push({ account_id: suspense, currency_id: baseCurrency, rate: 1, fc: net });
+      console.warn(`  ! account ${code} (balance ${net.toFixed(3)}) not found/not postable, folded into variance`);
+      lines.push({ account_id: variance, currency_id: baseCurrency, rate: 1, fc: net });
       continue;
     }
-    matched++;
+
     const currencyId = acc.currencyId ?? baseCurrency;
-    lines.push({ account_id: acc.id, currency_id: currencyId, rate: await rateFor(currencyId), fc: net });
+    const rate = await rateFor(currencyId);
+
+    if (isIncomeStatement(code)) {
+      closedPnL++;
+      netIncomeBase += round4(net * rate);
+      continue; // closed to retained earnings below, not carried as its own line
+    }
+
+    matchedBS++;
+    lines.push({ account_id: acc.id, currency_id: currencyId, rate, fc: net });
+  }
+
+  // net income = -(sum of P&L nets): revenue nets negative, expense nets positive
+  const netIncome = round4(-netIncomeBase);
+  if (netIncome !== 0) {
+    lines.push({ account_id: retained, currency_id: baseCurrency, rate: 1, fc: -netIncome }); // credit if profit
   }
 
   const baseAmount = (l: Line) => round4(l.fc * l.rate);
   const totalBase = lines.reduce((s, l) => s + baseAmount(l), 0);
   const plug = round4(-totalBase);
   if (plug !== 0) {
-    lines.push({ account_id: suspense, currency_id: baseCurrency, rate: 1, fc: plug });
+    lines.push({ account_id: variance, currency_id: baseCurrency, rate: 1, fc: plug });
   }
 
   if (lines.length < 2) {
@@ -118,7 +148,8 @@ export async function migrateOpeningBalances(orgId: string): Promise<void> {
   });
 
   console.log(
-    `  opening balances: posted (${matched} accounts, ${skipped} folded into variance` +
+    `  opening balances: posted (${matchedBS} balance-sheet accounts, ${closedPnL} P&L accounts closed ` +
+      `to retained earnings [net ${netIncome.toFixed(4)}], ${skipped} folded into variance` +
       `${plug !== 0 ? `, plug ${plug.toFixed(4)}` : ''}) as of ${iso(new Date(cutoverDate))}`,
   );
 }
@@ -127,15 +158,14 @@ function round4(n: number): number {
   return Math.round(n * 10000) / 10000;
 }
 
-async function ensureVarianceAccount(orgId: string): Promise<string> {
-  const existing = await pool.query(`select id from accounts where org_id = $1 and code = 'OB-VAR'`, [orgId]);
+async function ensureAccount(orgId: string, code: string, nameAr: string, nameEn: string): Promise<string> {
+  const existing = await pool.query(`select id from accounts where org_id = $1 and code = $2`, [orgId, code]);
   if (existing.rows[0]) return existing.rows[0].id;
   const res = await pool.query(
     `insert into accounts (org_id, code, name_ar, name_en, is_postable, nature, notes)
-     values ($1,'OB-VAR','فروقات الأرصدة الافتتاحية','Opening balance variance', true, 'both',
-             'تُنشأ آلياً أثناء الترحيل من miles2023 لضمان توازن قيد الافتتاح')
+     values ($1,$2,$3,$4, true, 'both', 'أُنشئ آلياً أثناء الترحيل من miles2023')
      returning id`,
-    [orgId],
+    [orgId, code, nameAr, nameEn],
   );
   return res.rows[0].id;
 }
