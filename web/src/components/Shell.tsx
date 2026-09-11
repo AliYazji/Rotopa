@@ -10,6 +10,7 @@ const nav = [
   { to: '/employees', label: 'الموظفون' },
   { to: '/items', label: 'الأصناف' },
   { to: '/stock-moves', label: 'حركات المخزون' },
+  { to: '/sales-invoices', label: 'فواتير المبيعات' },
   { to: '/vouchers', label: 'السندات' },
   { to: '/cheques', label: 'الشيكات' },
   { to: '/journals', label: 'القيود' },

@@ -24,6 +24,9 @@ import ItemNew from './pages/ItemNew.tsx';
 import ItemDetail from './pages/ItemDetail.tsx';
 import StockMoves from './pages/StockMoves.tsx';
 import StockMoveNew from './pages/StockMoveNew.tsx';
+import SalesInvoices from './pages/SalesInvoices.tsx';
+import SalesInvoiceNew from './pages/SalesInvoiceNew.tsx';
+import SalesInvoiceDetail from './pages/SalesInvoiceDetail.tsx';
 import Currencies from './pages/Currencies.tsx';
 
 function Gate() {
@@ -53,6 +56,9 @@ function Gate() {
         <Route path="/items/:id" element={<ItemDetail />} />
         <Route path="/stock-moves" element={<StockMoves />} />
         <Route path="/stock-moves/new" element={<StockMoveNew />} />
+        <Route path="/sales-invoices" element={<SalesInvoices />} />
+        <Route path="/sales-invoices/new" element={<SalesInvoiceNew />} />
+        <Route path="/sales-invoices/:id" element={<SalesInvoiceDetail />} />
         <Route path="/currencies" element={<Currencies />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

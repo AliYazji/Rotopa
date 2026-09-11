@@ -3,11 +3,11 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase.ts';
 import { useOrg } from '../lib/org.tsx';
-import { sanitizeSearchTerm, today } from '../lib/format.ts';
+import { today } from '../lib/format.ts';
+import { ItemPicker } from '../components/ItemPicker.tsx';
 
 interface WhOpt { id: string; code: string; name_ar: string; }
 interface AccOpt { id: string; code: string; name_ar: string; }
-interface ItemHit { id: string; code: string; name_ar: string; base_unit_name: string; }
 
 interface Line { key: number; itemId: string; itemLabel: string; qty: string; unitCost: string }
 let keySeq = 0;
@@ -18,47 +18,6 @@ const TITLE: Record<string, string> = {
   adjustment_out: 'صرف من المخزون', transfer: 'تحويل بين مستودعين',
 };
 const NEEDS_COST: Record<string, boolean> = { opening: true, adjustment_in: true, adjustment_out: false, transfer: false };
-
-function ItemPicker({ line, onPick }: { line: Line; onPick: (id: string, label: string) => void }) {
-  const [q, setQ] = useState(line.itemLabel);
-  const [open, setOpen] = useState(false);
-  const { data } = useQuery({
-    queryKey: ['item-search', q],
-    enabled: open && q.trim().length >= 2,
-    queryFn: async (): Promise<ItemHit[]> => {
-      const term = sanitizeSearchTerm(q);
-      const { data, error } = await supabase.from('items')
-        .select('id, code, name_ar, base_unit_name')
-        .or(`name_ar.ilike.%${term}%,code.ilike.%${term}%`)
-        .eq('is_stock_tracked', true).limit(8);
-      if (error) throw error;
-      return data as ItemHit[];
-    },
-  });
-  return (
-    <div style={{ position: 'relative' }}>
-      <input
-        value={q}
-        placeholder="اكتب اسم الصنف أو رمزه…"
-        onChange={(e) => { setQ(e.target.value); setOpen(true); }}
-        onFocus={() => setOpen(true)}
-      />
-      {open && data && data.length > 0 && (
-        <div className="card" style={{ position: 'absolute', zIndex: 10, top: '100%', insetInlineStart: 0, width: 260, padding: '0.25rem', maxHeight: 220, overflowY: 'auto' }}>
-          {data.map((it) => (
-            <div
-              key={it.id}
-              style={{ padding: '0.4rem 0.5rem', cursor: 'pointer', borderRadius: 6 }}
-              onMouseDown={() => { onPick(it.id, `${it.code} · ${it.name_ar}`); setQ(`${it.code} · ${it.name_ar}`); setOpen(false); }}
-            >
-              <span className="mono">{it.code}</span> · {it.name_ar} <span className="muted">({it.base_unit_name})</span>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
 
 export default function StockMoveNew() {
   const { org } = useOrg();
@@ -198,7 +157,7 @@ export default function StockMoveNew() {
           <tbody>
             {lines.map((l) => (
               <tr key={l.key}>
-                <td><ItemPicker line={l} onPick={(id, label) => setLine(l.key, { itemId: id, itemLabel: label })} /></td>
+                <td><ItemPicker initialLabel={l.itemLabel} onPick={(it) => setLine(l.key, { itemId: it.id, itemLabel: `${it.code} · ${it.name_ar}` })} /></td>
                 <td><input className="num" inputMode="decimal" value={l.qty} onChange={(e) => setLine(l.key, { qty: e.target.value })} /></td>
                 {NEEDS_COST[type] && <td><input className="num" inputMode="decimal" value={l.unitCost} onChange={(e) => setLine(l.key, { unitCost: e.target.value })} /></td>}
                 <td>{lines.length > 1 && <button type="button" onClick={() => setLines((ls) => ls.filter((x) => x.key !== l.key))}>×</button>}</td>
