@@ -6,6 +6,7 @@ import { useOrg } from '../lib/org.tsx';
 const nav = [
   { to: '/', label: 'الرئيسية' },
   { to: '/vouchers', label: 'السندات' },
+  { to: '/cheques', label: 'الشيكات' },
   { to: '/journals', label: 'القيود' },
   { to: '/accounts', label: 'دليل الحسابات' },
   { to: '/currencies', label: 'العملات' },
