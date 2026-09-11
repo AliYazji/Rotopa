@@ -8,6 +8,8 @@ const nav = [
   { to: '/customers', label: 'العملاء' },
   { to: '/suppliers', label: 'الموردون' },
   { to: '/employees', label: 'الموظفون' },
+  { to: '/items', label: 'الأصناف' },
+  { to: '/stock-moves', label: 'حركات المخزون' },
   { to: '/vouchers', label: 'السندات' },
   { to: '/cheques', label: 'الشيكات' },
   { to: '/journals', label: 'القيود' },

@@ -23,6 +23,7 @@ npm run etl:currencies
 npm run etl:accounts        # categories + accounts
 npm run etl:rates
 npm run etl:dealers
+npm run etl:inventory       # items, categories, warehouses, units
 npm run etl:opening         # opening balances — run last, needs accounts + rates
 npm run verify               # row-count + tree-integrity check vs. the legacy DB
 ```
@@ -38,6 +39,7 @@ Every step is idempotent (`on conflict do update`) — safe to re-run.
 | `accounts` | `master_acc` | `accounts` | tree by `father_acc`; `is_postable` = leaf; nature 1→credit 2→debit 3→both |
 | `rates` | `currancy_rate_tb` (wide) | `exchange_rates` (long) | one row per currency per date |
 | `dealers` | `Dealers_tb` | `dealers` | merged by `Dealer_no`; role = flags |
+| `inventory` | `ITEM_TB`, `CategoryItem_tb`, `center_tb`, `item_unit` | `items`, `item_categories`, `warehouses`, `item_units` | master data only — see below |
 | `opening-balances` | `acc_trn` (summed) | one `journal_entries` row + lines | see below |
 
 ### Opening balances — how it works
@@ -93,7 +95,26 @@ clearly expenses. The step trusts `class_acc` as-is rather than guessing from
 the name or code range, so these land as ordinary balance-sheet lines —
 visible in the trial balance, easy for an accountant to spot and reclassify.
 
+### Inventory — what's migrated and what isn't
+
+`inventory` migrates **master data only**: 3,546 items, 13 categories, 2
+warehouses (`center_tb`), 4,827 item units. It does **not** migrate stock
+quantities or history (`Item_stock_tb`/`Item_stock_Details`, 178k rows) —
+`ITEM_TB.QtyInStock` is unreliable in this backup (only 3 of 3,546 items have
+it populated), the same pattern already seen with `master_acc.BLANCE` being
+empty for accounts. Every migrated item starts with zero stock. A proper
+opening-stock migration needs the same care the accounting opening balance
+got — summing the real movement ledger, picking a cutover date, reconciling
+a variance into a dedicated account — and belongs in its own step once
+inventory is in real use, not bundled into master-data migration.
+
+Two accounts are auto-created if missing (`INV-DEFAULT`, `COGS-DEFAULT`) and
+assigned to every tracked item, because no item in this backup has its own
+`sales_acc_no`/`Purchases_acc_no` set — review and replace them with real
+accounts from your chart before relying on inventory GL postings.
+
 ## Not yet migrated (later phases)
 
-Historical transaction detail (archive schema, if ever needed for drill-down),
-inventory, invoices, payroll.
+Stock quantities/history (see above), sales and purchase invoices (modules
+10/11 — not built yet; `stock_moves.move_type` already reserves
+`purchase_in`/`sale_out` for when they exist), payroll.

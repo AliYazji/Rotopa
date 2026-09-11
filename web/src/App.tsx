@@ -17,6 +17,11 @@ import Vouchers from './pages/Vouchers.tsx';
 import VoucherNew from './pages/VoucherNew.tsx';
 import Cheques from './pages/Cheques.tsx';
 import ChequeNew from './pages/ChequeNew.tsx';
+import Items from './pages/Items.tsx';
+import ItemNew from './pages/ItemNew.tsx';
+import ItemDetail from './pages/ItemDetail.tsx';
+import StockMoves from './pages/StockMoves.tsx';
+import StockMoveNew from './pages/StockMoveNew.tsx';
 import Currencies from './pages/Currencies.tsx';
 
 function Gate() {
@@ -39,6 +44,11 @@ function Gate() {
         <Route path="/vouchers/new" element={<VoucherNew />} />
         <Route path="/cheques" element={<Cheques />} />
         <Route path="/cheques/new" element={<ChequeNew />} />
+        <Route path="/items" element={<Items />} />
+        <Route path="/items/new" element={<ItemNew />} />
+        <Route path="/items/:id" element={<ItemDetail />} />
+        <Route path="/stock-moves" element={<StockMoves />} />
+        <Route path="/stock-moves/new" element={<StockMoveNew />} />
         <Route path="/currencies" element={<Currencies />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

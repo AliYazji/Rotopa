@@ -5,6 +5,7 @@ import { migrateCategories } from './steps/categories.ts';
 import { migrateAccounts } from './steps/accounts.ts';
 import { migrateRates } from './steps/rates.ts';
 import { migrateDealers } from './steps/dealers.ts';
+import { migrateInventory } from './steps/inventory.ts';
 import { migrateOpeningBalances } from './steps/opening-balances.ts';
 
 const STEPS: Record<string, (orgId: string) => Promise<void>> = {
@@ -13,9 +14,10 @@ const STEPS: Record<string, (orgId: string) => Promise<void>> = {
   accounts: migrateAccounts,
   rates: migrateRates,
   dealers: migrateDealers,
+  inventory: migrateInventory,
   'opening-balances': migrateOpeningBalances,
 };
-const ORDER = ['currencies', 'categories', 'accounts', 'rates', 'dealers', 'opening-balances'];
+const ORDER = ['currencies', 'categories', 'accounts', 'rates', 'dealers', 'inventory', 'opening-balances'];
 
 async function main() {
   const want = process.argv.slice(2);

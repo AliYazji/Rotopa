@@ -69,9 +69,15 @@ begin
     end;
   end loop;
 
+  -- now() is transaction time in Postgres, not wall-clock time — it returns
+  -- the SAME value for every call inside one transaction, so a timestamp+
+  -- random default code can collide when create_dealer runs more than once
+  -- in the same transaction (a bulk import, or just two calls back to back).
+  -- app.next_seq is the same gapless-counter mechanism the ledger itself
+  -- uses for document numbers, so it can't collide.
   insert into dealers (org_id, code, name_ar, is_customer, is_supplier, is_employee, account_id,
                         currency_id, credit_limit, phone, email, address, city, tax_no)
-  values (p_org, coalesce(p_code, 'D' || to_char(now(), 'YYMMDDHH24MISS') || floor(random()*100)::int),
+  values (p_org, coalesce(p_code, 'D' || app.next_seq(p_org, 'dealer_code')),
           p_name_ar, p_is_customer, p_is_supplier, p_is_employee, v_account_id,
           p_currency_id, coalesce(p_credit_limit,0), p_phone, p_email, p_address, p_city, p_tax_no)
   returning id into v_dealer_id;

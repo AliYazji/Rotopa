@@ -9,6 +9,7 @@
     "etl:accounts": "tsx src/run.ts categories accounts",
     "etl:rates": "tsx src/run.ts rates",
     "etl:dealers": "tsx src/run.ts dealers",
+    "etl:inventory": "tsx src/run.ts inventory",
     "etl:opening": "tsx src/run.ts opening-balances",
     "verify": "tsx src/verify.ts"
   },
