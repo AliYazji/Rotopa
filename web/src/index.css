@@ -87,10 +87,13 @@ tr.rowlink { cursor: pointer; }
 .right { text-align: left; }
 
 /* app shell */
-.shell { display: grid; grid-template-columns: 232px 1fr; min-height: 100%; }
+.shell { display: grid; grid-template-columns: 232px 1fr; min-height: 100%; align-items: start; }
 .side {
   background: var(--surface); border-inline-start: 1px solid var(--line);
   padding: 1rem; display: flex; flex-direction: column; gap: 0.25rem;
+  /* stays put while .main scrolls — otherwise scrolling down a long page
+     (or a long expanded sidebar) scrolls the nav out of view with it */
+  position: sticky; top: 0; max-height: 100vh; overflow-y: auto;
 }
 .side .brand { font-weight: 700; font-size: 1.1rem; padding: 0.5rem; margin-bottom: 0.5rem; }
 .side .section-label {
@@ -98,6 +101,15 @@ tr.rowlink { cursor: pointer; }
   padding: 0.7rem 0.6rem 0.15rem;
 }
 .side .section-label:first-of-type { padding-top: 0.2rem; }
+.side .section-toggle {
+  display: flex; align-items: center; justify-content: space-between; width: 100%;
+  border: none; background: none; font: inherit; cursor: pointer;
+}
+.side .section-toggle .chevron {
+  font-size: 0.75rem; transition: transform 0.15s ease; transform: rotate(-90deg);
+}
+.side .section-toggle.open .chevron { transform: rotate(0deg); }
+.side .section-toggle:hover { color: var(--ink); }
 .side a {
   color: var(--ink); padding: 0.5rem 0.6rem; border-radius: var(--radius); font-size: 0.95rem;
 }

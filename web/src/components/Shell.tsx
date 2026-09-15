@@ -35,6 +35,7 @@ const nav: { section: string | null; items: { to: string; label: string }[] }[] 
     section: 'المخزون',
     items: [
       { to: '/items', label: 'الأصناف' },
+      { to: '/item-categories', label: 'فئات الأصناف' },
       { to: '/stock-moves', label: 'حركات المخزون' },
       { to: '/stock-reservations', label: 'حجز المخزون' },
     ],
@@ -83,6 +84,7 @@ const nav: { section: string | null; items: { to: string; label: string }[] }[] 
     section: 'الإعدادات',
     items: [
       { to: '/accounts', label: 'دليل الحسابات' },
+      { to: '/account-categories', label: 'تصنيفات الحسابات' },
       { to: '/currencies', label: 'العملات' },
       { to: '/team', label: 'الفريق' },
       { to: '/roles', label: 'الأدوار والصلاحيات' },
@@ -114,6 +116,19 @@ function usePendingCount(orgId: string | undefined) {
   return data ?? 0;
 }
 
+// Which section a path belongs to, so the sidebar can auto-expand it.
+function sectionForPath(pathname: string): string | null {
+  for (const group of nav) {
+    if (!group.section) continue;
+    if (group.items.some((n) => (n.to === '/' ? pathname === '/' : pathname === n.to || pathname.startsWith(n.to + '/')))) {
+      return group.section;
+    }
+  }
+  return null;
+}
+
+const OPEN_SECTIONS_KEY = 'rotopa.sidebar.openSections';
+
 export function Shell({ children }: { children: ReactNode }) {
   const { signOut, signOutEverywhere } = useAuth();
   const { org } = useOrg();
@@ -121,8 +136,36 @@ export function Shell({ children }: { children: ReactNode }) {
   const location = useLocation();
   const pending = usePendingCount(org?.id);
 
-  // close the mobile drawer whenever the route changes
-  useEffect(() => { setOpen(false); }, [location.pathname]);
+  // Collapsible sections — remembered per browser (localStorage), and the
+  // section containing whatever page you're actually on always stays open
+  // even if you'd previously collapsed it, so navigating never hides where
+  // you are. Long sidebar (9 sections) otherwise meant scrolling past
+  // everything just to reach the page you wanted.
+  const [openSections, setOpenSections] = useState<Set<string>>(() => {
+    try {
+      const saved = localStorage.getItem(OPEN_SECTIONS_KEY);
+      if (saved) return new Set(JSON.parse(saved));
+    } catch { /* localStorage unavailable — fall through to the default */ }
+    const active = sectionForPath(location.pathname);
+    return new Set(active ? [active] : []);
+  });
+
+  function toggleSection(section: string) {
+    setOpenSections((prev) => {
+      const next = new Set(prev);
+      if (next.has(section)) next.delete(section); else next.add(section);
+      try { localStorage.setItem(OPEN_SECTIONS_KEY, JSON.stringify([...next])); } catch { /* ignore */ }
+      return next;
+    });
+  }
+
+  // close the mobile drawer whenever the route changes; keep the current
+  // page's section expanded regardless of its saved collapsed state
+  useEffect(() => {
+    setOpen(false);
+    const active = sectionForPath(location.pathname);
+    if (active) setOpenSections((prev) => (prev.has(active) ? prev : new Set(prev).add(active)));
+  }, [location.pathname]);
 
   return (
     <div className="shell">
@@ -141,19 +184,32 @@ export function Shell({ children }: { children: ReactNode }) {
           <div className="brand">روتوبا</div>
           <button onClick={() => setOpen(false)} aria-label="إغلاق القائمة" className="side-close">×</button>
         </div>
-        {nav.map((group, i) => (
-          <Fragment key={group.section ?? `top-${i}`}>
-            {group.section && <div className="section-label">{group.section}</div>}
-            {group.items.map((n) => (
-              <NavLink key={n.to} to={n.to} end={n.to === '/'} className={({ isActive }) => (isActive ? 'active' : '')}>
-                <span className="row" style={{ justifyContent: 'space-between', gap: '0.4rem' }}>
-                  {n.label}
-                  {n.to === '/' && pending > 0 && <span className="badge void">{pending}</span>}
-                </span>
-              </NavLink>
-            ))}
-          </Fragment>
-        ))}
+        {nav.map((group, i) => {
+          const isOpen = !group.section || openSections.has(group.section);
+          return (
+            <Fragment key={group.section ?? `top-${i}`}>
+              {group.section && (
+                <button
+                  type="button"
+                  className={`section-label section-toggle${isOpen ? ' open' : ''}`}
+                  onClick={() => toggleSection(group.section!)}
+                  aria-expanded={isOpen}
+                >
+                  <span>{group.section}</span>
+                  <span className="chevron">▾</span>
+                </button>
+              )}
+              {isOpen && group.items.map((n) => (
+                <NavLink key={n.to} to={n.to} end={n.to === '/'} className={({ isActive }) => (isActive ? 'active' : '')}>
+                  <span className="row" style={{ justifyContent: 'space-between', gap: '0.4rem' }}>
+                    {n.label}
+                    {n.to === '/' && pending > 0 && <span className="badge void">{pending}</span>}
+                  </span>
+                </NavLink>
+              ))}
+            </Fragment>
+          );
+        })}
         <div className="spacer" />
         <div className="muted" style={{ fontSize: '0.8rem', padding: '0 0.5rem' }}>{org?.name_ar}</div>
         <button onClick={signOut}>تسجيل الخروج</button>
