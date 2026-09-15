@@ -127,6 +127,11 @@ begin
   insert into roles (org_id, code, name_ar, is_system) values
     (v_org, 'viewer',     'مطّلع',  true) returning id into v_role_view;
 
+  -- seeding the 3 fresh system roles' permissions is legitimate even though
+  -- a later direct edit to a system role's permissions is not (see
+  -- app.tg_protect_system_role_permissions in 20250911002900_team_management.sql)
+  perform set_config('app.skip_role_guard', 'on', true);
+
   -- owner gets everything (also bypasses via is_owner, but be explicit)
   insert into role_permissions (role_id, permission_key)
     select v_role_owner, key from permissions;
@@ -139,6 +144,8 @@ begin
   -- viewer: read-only
   insert into role_permissions (role_id, permission_key) values
     (v_role_view, 'audit.read'), (v_role_view, 'reports.view');
+
+  perform set_config('app.skip_role_guard', 'off', true);
 
   -- creator becomes owner
   insert into memberships (org_id, user_id, role_id, is_owner)

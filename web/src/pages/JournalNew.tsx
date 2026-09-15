@@ -99,6 +99,7 @@ export default function JournalNew() {
           </div>
         </div>
 
+        <div style={{ overflowX: 'auto' }}>
         <table style={{ marginTop: '0.5rem' }}>
           <thead>
             <tr>
@@ -152,6 +153,7 @@ export default function JournalNew() {
             </tr>
           </tfoot>
         </table>
+        </div>
 
         <button type="button" onClick={() => setLines((ls) => [...ls, emptyLine()])} style={{ marginTop: '0.5rem' }}>
           + سطر

@@ -136,6 +136,7 @@ export default function SalesReturnNew() {
         <div className="card">
           <p className="muted" style={{ marginTop: 0 }}>مرجَع على فاتورة رقم {invoice.invoice_no} · {invoice.dealer?.name_ar}</p>
 
+          <div style={{ overflowX: 'auto' }}>
           <table>
             <thead>
               <tr>
@@ -169,6 +170,7 @@ export default function SalesReturnNew() {
               {lines?.length === 0 && <tr><td colSpan={5} className="muted">جارٍ التحميل…</td></tr>}
             </tbody>
           </table>
+          </div>
 
           <div className="row" style={{ alignItems: 'center', marginTop: '0.75rem' }}>
             <label style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', width: 'auto', margin: 0 }}>

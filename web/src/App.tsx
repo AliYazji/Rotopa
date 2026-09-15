@@ -5,6 +5,7 @@ import { Shell } from './components/Shell.tsx';
 import Login from './pages/Login.tsx';
 import Onboarding from './pages/Onboarding.tsx';
 import Dashboard from './pages/Dashboard.tsx';
+import TrialBalance from './pages/TrialBalance.tsx';
 import Accounts from './pages/Accounts.tsx';
 import AccountNew from './pages/AccountNew.tsx';
 import AccountDetail from './pages/AccountDetail.tsx';
@@ -66,6 +67,10 @@ import PosOrders from './pages/PosOrders.tsx';
 import PosOrderNew from './pages/PosOrderNew.tsx';
 import PosOrderDetail from './pages/PosOrderDetail.tsx';
 import Currencies from './pages/Currencies.tsx';
+import Team from './pages/Team.tsx';
+import Roles from './pages/Roles.tsx';
+import Periods from './pages/Periods.tsx';
+import AuditLog from './pages/AuditLog.tsx';
 
 function Gate() {
   const { org, loading } = useOrg();
@@ -75,6 +80,7 @@ function Gate() {
     <Shell>
       <Routes>
         <Route path="/" element={<Dashboard />} />
+        <Route path="/trial-balance" element={<TrialBalance />} />
         <Route path="/accounts" element={<Accounts />} />
         <Route path="/accounts/new" element={<AccountNew />} />
         <Route path="/accounts/:id" element={<AccountDetail />} />
@@ -136,6 +142,10 @@ function Gate() {
         <Route path="/pos-orders/new" element={<PosOrderNew />} />
         <Route path="/pos-orders/:id" element={<PosOrderDetail />} />
         <Route path="/currencies" element={<Currencies />} />
+        <Route path="/team" element={<Team />} />
+        <Route path="/roles" element={<Roles />} />
+        <Route path="/periods" element={<Periods />} />
+        <Route path="/audit-log" element={<AuditLog />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Shell>

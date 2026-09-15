@@ -154,6 +154,7 @@ export default function PurchaseInvoiceNew() {
           )}
         </div>
 
+        <div style={{ overflowX: 'auto' }}>
         <table style={{ marginTop: '0.5rem' }}>
           <thead>
             <tr>
@@ -218,6 +219,7 @@ export default function PurchaseInvoiceNew() {
             </tr>
           </tfoot>
         </table>
+        </div>
         <button type="button" onClick={() => setLines((ls) => [...ls, emptyLine()])} style={{ marginTop: '0.5rem' }}>+ صنف</button>
 
         <div className="field" style={{ maxWidth: 320 }}>

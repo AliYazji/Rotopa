@@ -114,6 +114,7 @@ export default function VoucherNew() {
           <input value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="وصف السند" />
         </div>
 
+        <div style={{ overflowX: 'auto' }}>
         <table style={{ marginTop: '0.5rem' }}>
           <thead>
             <tr>
@@ -157,6 +158,7 @@ export default function VoucherNew() {
             </tr>
           </tfoot>
         </table>
+        </div>
 
         <button type="button" onClick={() => setLines((ls) => [...ls, emptyLine()])} style={{ marginTop: '0.5rem' }}>
           + سطر

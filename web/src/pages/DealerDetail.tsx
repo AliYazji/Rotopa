@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase.ts';
 import { fmtDate, fmtMoney, translateError } from '../lib/format.ts';
@@ -219,6 +219,9 @@ export default function DealerDetail() {
           </tbody>
         </table>
       </div>
+      <p style={{ marginTop: '1rem' }}>
+        <Link to={dealer.is_customer ? '/customers' : dealer.is_supplier ? '/suppliers' : '/employees'}>‹ رجوع للقائمة</Link>
+      </p>
     </>
   );
 }

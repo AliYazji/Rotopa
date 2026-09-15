@@ -106,6 +106,7 @@ export default function SalesOrderNew() {
           </div>
         </div>
 
+        <div style={{ overflowX: 'auto' }}>
         <table style={{ marginTop: '0.5rem' }}>
           <thead>
             <tr>
@@ -155,6 +156,7 @@ export default function SalesOrderNew() {
             <tr style={{ fontWeight: 700 }}><td colSpan={5}>الإجمالي</td><td className="num">{fmtMoney(total)}</td><td /></tr>
           </tfoot>
         </table>
+        </div>
         <button type="button" onClick={() => setLines((ls) => [...ls, emptyLine()])} style={{ marginTop: '0.5rem' }}>+ صنف</button>
 
         <div className="field"><label>البيان (اختياري)</label><input value={description} onChange={(e) => setDescription(e.target.value)} /></div>

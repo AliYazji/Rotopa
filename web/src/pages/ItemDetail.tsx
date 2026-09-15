@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase.ts';
 import { fmtDate, fmtMoney, translateError } from '../lib/format.ts';
@@ -377,6 +377,7 @@ export default function ItemDetail() {
           </div>
         </>
       )}
+      <p style={{ marginTop: '1rem' }}><Link to="/items">‹ رجوع لقائمة الأصناف</Link></p>
     </>
   );
 }

@@ -149,6 +149,7 @@ export default function StockMoveNew() {
           <input value={desc} onChange={(e) => setDesc(e.target.value)} />
         </div>
 
+        <div style={{ overflowX: 'auto' }}>
         <table style={{ marginTop: '0.5rem' }}>
           <thead>
             <tr>
@@ -186,6 +187,7 @@ export default function StockMoveNew() {
             })}
           </tbody>
         </table>
+        </div>
         <button type="button" onClick={() => setLines((ls) => [...ls, emptyLine()])} style={{ marginTop: '0.5rem' }}>+ سطر</button>
 
         {type !== 'transfer' && (
