@@ -4,27 +4,33 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase.ts';
 import { useOrg } from '../lib/org.tsx';
 import { VAT_RATE, fmtDate, fmtMoney, today, translateError } from '../lib/format.ts';
-import { ItemPicker } from '../components/ItemPicker.tsx';
+import { ItemPicker, type ItemUnitOpt } from '../components/ItemPicker.tsx';
 
 interface Invoice {
-  id: string; invoice_no: number; invoice_date: string; status: 'draft' | 'posted' | 'void';
+  id: string; invoice_no: number; invoice_date: string; due_date: string; status: 'draft' | 'posted' | 'void';
   payment_method: 'credit' | 'cash'; cash_account_id: string | null; description: string;
   dealer_id: string; warehouse_id: string;
   dealer: { name_ar: string } | null; void_reason: string | null;
 }
 interface Line {
   id: string; line_no: number; item_id: string; qty: number; unit_price: number; discount_pct: number; line_total: number; unit_cost: number | null;
-  item: { code: string; name_ar: string; base_unit_name: string } | null;
+  unit_id: string | null;
+  item: { code: string; name_ar: string; base_unit_name: string; item_units: ItemUnitOpt[] } | null;
+  unit: { unit_name: string } | null;
 }
 interface DealerOpt { id: string; code: string; name_ar: string; }
 interface WhOpt { id: string; code: string; name_ar: string; }
 interface AccOpt { id: string; code: string; name_ar: string; }
 
-interface EditLine { key: number; itemId: string; itemLabel: string; qty: string; unitPrice: string; discountPct: string }
+interface EditLine {
+  key: number; itemId: string; itemLabel: string; qty: string; unitPrice: string; discountPct: string;
+  baseUnitName: string; unitId: string; units: ItemUnitOpt[];
+}
 let keySeq = 0;
 const toEditLine = (l: Line): EditLine => ({
-  key: keySeq++, itemId: '', itemLabel: `${l.item?.code} · ${l.item?.name_ar}`,
+  key: keySeq++, itemId: l.item_id, itemLabel: `${l.item?.code} · ${l.item?.name_ar}`,
   qty: String(l.qty), unitPrice: String(l.unit_price), discountPct: String(l.discount_pct),
+  baseUnitName: l.item?.base_unit_name ?? '', unitId: l.unit_id ?? '', units: l.item?.item_units ?? [],
 });
 
 const STATUS: Record<string, string> = { draft: 'مسودة', posted: 'مرحّلة', void: 'ملغاة' };
@@ -44,6 +50,7 @@ export default function SalesInvoiceDetail() {
   const [warehouseId, setWarehouseId] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<'credit' | 'cash'>('credit');
   const [cashAccountId, setCashAccountId] = useState('');
+  const [dueDate, setDueDate] = useState('');
   const [desc, setDesc] = useState('');
   const [defaultSalesAccountId, setDefaultSalesAccountId] = useState('');
   const [vatAccountId, setVatAccountId] = useState('');
@@ -54,7 +61,7 @@ export default function SalesInvoiceDetail() {
     enabled: !!id,
     queryFn: async (): Promise<Invoice> => {
       const { data, error } = await supabase.from('sales_invoices')
-        .select('id, invoice_no, invoice_date, status, payment_method, cash_account_id, description, dealer_id, warehouse_id, void_reason, dealer:dealer_id(name_ar)')
+        .select('id, invoice_no, invoice_date, due_date, status, payment_method, cash_account_id, description, dealer_id, warehouse_id, void_reason, dealer:dealer_id(name_ar)')
         .eq('id', id).single();
       if (error) throw error;
       return data as unknown as Invoice;
@@ -65,7 +72,7 @@ export default function SalesInvoiceDetail() {
     enabled: !!id,
     queryFn: async (): Promise<Line[]> => {
       const { data, error } = await supabase.from('sales_invoice_lines')
-        .select('id, line_no, item_id, qty, unit_price, discount_pct, line_total, unit_cost, item:item_id(code, name_ar, base_unit_name)')
+        .select('id, line_no, item_id, qty, unit_price, discount_pct, line_total, unit_cost, unit_id, item:item_id(code, name_ar, base_unit_name, item_units(id, unit_name, conversion_factor, is_sales_default, is_purchase_default)), unit:unit_id(unit_name)')
         .eq('invoice_id', id).order('line_no');
       if (error) throw error;
       return data as unknown as Line[];
@@ -76,7 +83,7 @@ export default function SalesInvoiceDetail() {
     if (invoice) {
       setDealerId(invoice.dealer_id); setWarehouseId(invoice.warehouse_id);
       setPaymentMethod(invoice.payment_method); setCashAccountId(invoice.cash_account_id ?? '');
-      setDesc(invoice.description ?? '');
+      setDesc(invoice.description ?? ''); setDueDate(invoice.due_date);
     }
   }, [invoice]);
   useEffect(() => { if (lines) setEditLines(lines.map(toEditLine)); }, [lines]);
@@ -118,12 +125,14 @@ export default function SalesInvoiceDetail() {
       if (!dealerId) throw new Error('اختر العميل');
       if (!warehouseId) throw new Error('اختر المستودع');
       if (paymentMethod === 'cash' && !cashAccountId) throw new Error('اختر حساب الصندوق/البنك');
+      if (paymentMethod === 'credit' && dueDate < invoice!.invoice_date) throw new Error('تاريخ الاستحقاق لازم يكون بنفس تاريخ الفاتورة أو بعده');
       const valid = editLines.filter((l) => l.itemId && (parseFloat(l.qty) || 0) > 0 && parseFloat(l.unitPrice) >= 0);
       if (valid.length === 0) throw new Error('أضف صنفاً واحداً على الأقل');
 
       const { error: uErr } = await supabase.from('sales_invoices').update({
         dealer_id: dealerId, warehouse_id: warehouseId, payment_method: paymentMethod,
         cash_account_id: paymentMethod === 'cash' ? cashAccountId : null, description: desc,
+        due_date: paymentMethod === 'credit' ? dueDate : invoice!.invoice_date,
       }).eq('id', id);
       if (uErr) throw uErr;
 
@@ -134,6 +143,7 @@ export default function SalesInvoiceDetail() {
         valid.map((l, i) => ({
           invoice_id: id, line_no: i + 1, item_id: l.itemId,
           qty: parseFloat(l.qty), unit_price: parseFloat(l.unitPrice), discount_pct: parseFloat(l.discountPct) || 0,
+          unit_id: l.unitId || null,
         })),
       );
       if (iErr) throw iErr;
@@ -184,7 +194,7 @@ export default function SalesInvoiceDetail() {
         p_org: org!.id, p_invoice_date: today(), p_dealer_id: invoice.dealer_id, p_warehouse_id: invoice.warehouse_id,
         p_lines: lines.map((l) => ({ item_id: l.item_id, qty: l.qty, unit_price: l.unit_price, discount_pct: l.discount_pct })),
         p_payment_method: invoice.payment_method, p_cash_account_id: invoice.cash_account_id,
-        p_description: invoice.description,
+        p_description: invoice.description, p_due_date: invoice.due_date,
       });
       if (error) throw error;
       nav(`/sales-invoices/${newId}`);
@@ -207,10 +217,14 @@ export default function SalesInvoiceDetail() {
       </div>
 
       {invoice.status === 'draft' && !editing && (
-        <p className="muted">{fmtDate(invoice.invoice_date)} · {invoice.dealer?.name_ar} · {invoice.payment_method === 'cash' ? 'نقدي' : 'آجل'} — هاي مسودة، لسا ما ترحّلت.</p>
+        <p className="muted">
+          {fmtDate(invoice.invoice_date)} · {invoice.dealer?.name_ar} · {invoice.payment_method === 'cash' ? 'نقدي' : `آجل — يستحق ${fmtDate(invoice.due_date)}`} — هاي مسودة، لسا ما ترحّلت.
+        </p>
       )}
       {invoice.status !== 'draft' && (
-        <p className="muted">{fmtDate(invoice.invoice_date)} · {invoice.dealer?.name_ar} · {invoice.payment_method === 'cash' ? 'نقدي' : 'آجل'}</p>
+        <p className="muted">
+          {fmtDate(invoice.invoice_date)} · {invoice.dealer?.name_ar} · {invoice.payment_method === 'cash' ? 'نقدي' : `آجل — يستحق ${fmtDate(invoice.due_date)}`}
+        </p>
       )}
 
       {invoice.status === 'draft' && editing ? (
@@ -244,6 +258,12 @@ export default function SalesInvoiceDetail() {
                 {accounts?.map((a) => <option key={a.id} value={a.id}>{a.code} · {a.name_ar}</option>)}
               </select>
             )}
+            {paymentMethod === 'credit' && (
+              <div className="field" style={{ width: 160, margin: 0 }}>
+                <label>تاريخ الاستحقاق</label>
+                <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+              </div>
+            )}
           </div>
           <div className="field"><label>البيان</label><input value={desc} onChange={(e) => setDesc(e.target.value)} /></div>
 
@@ -252,6 +272,7 @@ export default function SalesInvoiceDetail() {
               <tr>
                 <th>الصنف</th>
                 <th style={{ width: 90 }} className="num">الكمية</th>
+                <th style={{ width: 110 }}>الوحدة</th>
                 <th style={{ width: 100 }} className="num">السعر</th>
                 <th style={{ width: 90 }} className="num">خصم %</th>
                 <th style={{ width: 40 }} />
@@ -263,10 +284,22 @@ export default function SalesInvoiceDetail() {
                   <td>
                     <ItemPicker
                       initialLabel={l.itemLabel} warehouseId={warehouseId || undefined}
-                      onPick={(it) => setEditLine(l.key, { itemId: it.id, itemLabel: `${it.code} · ${it.name_ar}`, unitPrice: l.unitPrice || String(it.sales_price) })}
+                      onPick={(it) => {
+                        const defaultUnit = it.units.find((u) => u.is_sales_default);
+                        setEditLine(l.key, {
+                          itemId: it.id, itemLabel: `${it.code} · ${it.name_ar}`, unitPrice: l.unitPrice || String(it.sales_price),
+                          baseUnitName: it.base_unit_name, units: it.units, unitId: defaultUnit?.id ?? '',
+                        });
+                      }}
                     />
                   </td>
                   <td><input className="num" inputMode="decimal" value={l.qty} onChange={(e) => setEditLine(l.key, { qty: e.target.value })} /></td>
+                  <td>
+                    <select value={l.unitId} onChange={(e) => setEditLine(l.key, { unitId: e.target.value })} disabled={!l.itemId}>
+                      <option value="">{l.baseUnitName || '—'}</option>
+                      {l.units.map((u) => <option key={u.id} value={u.id}>{u.unit_name} (= {u.conversion_factor} {l.baseUnitName})</option>)}
+                    </select>
+                  </td>
                   <td><input className="num" inputMode="decimal" value={l.unitPrice} onChange={(e) => setEditLine(l.key, { unitPrice: e.target.value })} /></td>
                   <td><input className="num" inputMode="decimal" value={l.discountPct} onChange={(e) => setEditLine(l.key, { discountPct: e.target.value })} /></td>
                   <td>{editLines.length > 1 && <button type="button" onClick={() => setEditLines((ls) => ls.filter((x) => x.key !== l.key))}>×</button>}</td>
@@ -274,12 +307,12 @@ export default function SalesInvoiceDetail() {
               ))}
             </tbody>
             <tfoot>
-              <tr><td colSpan={3}>المجموع قبل الضريبة</td><td className="num">{fmtMoney(total)}</td><td /></tr>
-              <tr className="muted"><td colSpan={3}>ضريبة القيمة المضافة (16%)</td><td className="num">{fmtMoney(total * VAT_RATE)}</td><td /></tr>
-              <tr style={{ fontWeight: 700 }}><td colSpan={3}>الإجمالي شامل الضريبة</td><td className="num">{fmtMoney(total * (1 + VAT_RATE))}</td><td /></tr>
+              <tr><td colSpan={4}>المجموع قبل الضريبة</td><td className="num">{fmtMoney(total)}</td><td /></tr>
+              <tr className="muted"><td colSpan={4}>ضريبة القيمة المضافة (16%)</td><td className="num">{fmtMoney(total * VAT_RATE)}</td><td /></tr>
+              <tr style={{ fontWeight: 700 }}><td colSpan={4}>الإجمالي شامل الضريبة</td><td className="num">{fmtMoney(total * (1 + VAT_RATE))}</td><td /></tr>
             </tfoot>
           </table>
-          <button type="button" onClick={() => setEditLines((ls) => [...ls, { key: keySeq++, itemId: '', itemLabel: '', qty: '1', unitPrice: '', discountPct: '0' }])} style={{ marginTop: '0.5rem' }}>+ صنف</button>
+          <button type="button" onClick={() => setEditLines((ls) => [...ls, { key: keySeq++, itemId: '', itemLabel: '', qty: '1', unitPrice: '', discountPct: '0', baseUnitName: '', unitId: '', units: [] }])} style={{ marginTop: '0.5rem' }}>+ صنف</button>
 
           {err && <p className="error">{err}</p>}
           <div className="row" style={{ marginTop: '1rem' }}>
@@ -304,11 +337,15 @@ export default function SalesInvoiceDetail() {
               {lines?.map((l) => (
                 <tr key={l.id}>
                   <td>{l.item?.code} · {l.item?.name_ar}</td>
-                  <td className="num">{fmtMoney(l.qty)} {l.item?.base_unit_name}</td>
+                  <td className="num">{fmtMoney(l.qty)} {l.unit?.unit_name ?? l.item?.base_unit_name}</td>
                   <td className="num">{fmtMoney(l.unit_price)}</td>
                   <td className="num">{l.discount_pct}</td>
                   <td className="num">{fmtMoney(l.line_total)}</td>
-                  {invoice.status !== 'draft' && <td className="num muted">{l.unit_cost != null ? fmtMoney(l.unit_cost) : '—'}</td>}
+                  {invoice.status !== 'draft' && (
+                    <td className="num muted">
+                      {l.unit_cost != null ? <>{fmtMoney(l.unit_cost)} / {l.item?.base_unit_name}</> : '—'}
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
@@ -371,9 +408,13 @@ export default function SalesInvoiceDetail() {
           </p>
           <div className="row" style={{ marginBottom: '1rem' }}>
             <button disabled={busy} onClick={duplicateToDraft}>نسخ إلى مسودة قابلة للتعديل</button>
+            <Link to={`/sales-returns/new?invoice=${invoice.id}`} className="btn">إنشاء مرجع مبيعات</Link>
           </div>
           <h2 style={{ fontSize: '0.95rem' }}>إلغاء الفاتورة</h2>
-          <p className="muted" style={{ fontSize: '0.9rem' }}>بينشئ فاتورة مرجع تعكس القيد وتعيد البضاعة للمخزون.</p>
+          <p className="muted" style={{ fontSize: '0.9rem' }}>
+            بينشئ فاتورة مرجع تعكس القيد وتعيد البضاعة للمخزون بالكامل — لإرجاع جزء فقط من الأصناف
+            استخدم <strong>إنشاء مرجع مبيعات</strong> بدلاً من الإلغاء الكامل.
+          </p>
           <div className="field"><input placeholder="السبب (اختياري)" value={reason} onChange={(e) => setReason(e.target.value)} /></div>
           {err && <p className="error">{err}</p>}
           <button className="btn-danger" disabled={busy} onClick={voidInvoice}>إلغاء الفاتورة</button>

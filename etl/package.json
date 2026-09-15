@@ -6,12 +6,13 @@
   "scripts": {
     "etl": "tsx src/run.ts",
     "etl:currencies": "tsx src/run.ts currencies",
-    "etl:accounts": "tsx src/run.ts categories accounts",
+    "etl:accounts": "tsx src/run.ts categories accounts categorize-accounts",
     "etl:rates": "tsx src/run.ts rates",
     "etl:dealers": "tsx src/run.ts dealers",
     "etl:inventory": "tsx src/run.ts inventory",
     "etl:opening-stock": "tsx src/run.ts opening-stock",
     "etl:opening": "tsx src/run.ts opening-balances",
+    "etl:categorize-accounts": "tsx src/run.ts categorize-accounts",
     "verify": "tsx src/verify.ts"
   },
   "dependencies": {

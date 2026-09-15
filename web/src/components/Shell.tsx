@@ -18,9 +18,14 @@ const nav: { section: string | null; items: { to: string; label: string }[] }[] 
     items: [
       { to: '/items', label: 'الأصناف' },
       { to: '/stock-moves', label: 'حركات المخزون' },
+      { to: '/stock-reservations', label: 'حجز المخزون' },
       { to: '/pos', label: 'الكاشير' },
       { to: '/sales-invoices', label: 'فواتير المبيعات' },
       { to: '/purchase-invoices', label: 'فواتير المشتريات' },
+      { to: '/sales-returns', label: 'مرتجعات المبيعات' },
+      { to: '/purchase-returns', label: 'مرتجعات المشتريات' },
+      { to: '/sales-orders', label: 'طلبات البيع' },
+      { to: '/purchase-orders', label: 'طلبات الشراء' },
     ],
   },
   {
@@ -58,6 +63,8 @@ const nav: { section: string | null; items: { to: string; label: string }[] }[] 
     items: [
       { to: '/income-statement', label: 'قائمة الدخل' },
       { to: '/balance-sheet', label: 'الميزانية العمومية' },
+      { to: '/ar-aging', label: 'أعمار ديون العملاء' },
+      { to: '/ap-aging', label: 'أعمار ديون الموردين' },
     ],
   },
   { section: null, items: [{ to: '/currencies', label: 'العملات' }] },

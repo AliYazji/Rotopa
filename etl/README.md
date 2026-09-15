@@ -43,22 +43,45 @@ Every step is idempotent (`on conflict do update`) — safe to re-run.
 | `inventory` | `ITEM_TB`, `CategoryItem_tb`, `center_tb`, `item_unit` | `items`, `item_categories`, `warehouses`, `item_units` | master data only |
 | `opening-stock` | `Item_stock_Details` (summed) | one `stock_moves` row + lines | quantities/cost only — see below |
 | `opening-balances` | `acc_trn` (summed) | one `journal_entries` row + lines | see below |
+| `categorize-accounts` | *(none — derived from the already-migrated `accounts` tree)* | `accounts.category_id` | runs **last**; see below |
 
-### Account categories are mostly unset — a real legacy data gap, not a bug
+### Account categories — RESOLVED: derived from the tree, not the broken legacy flag
 
-`accounts.category_id` (what module 08's `income_statement()`/`balance_sheet()` reports need
-to place an account) comes from `master_acc.accountCategoryType`. Checked directly against the
-real backup: only 24 of 114 accounts have that field set to anything nonzero — the legacy system
-itself never classified roughly 80% of the chart of accounts. `master_acc.class_acc` looked like
-a tempting fallback (it covers all 114 accounts) but was already found unreliable for this in
-an earlier step (module 04/opening-balances work) — 4 real expense accounts are tagged
-`class_acc=2` instead of `5`, a known source-data inconsistency. Auto-deriving a financial-
-statement category from `class_acc` would silently misclassify those accounts as something
-other than expenses — worse than just leaving them unclassified. So the ETL does not attempt a
-fallback; the web app's income statement/balance sheet pages both show a banner naming how many
-balance-carrying accounts have no category, linking to دليل الحسابات (`AccountDetail.tsx` already
-has an editable "التصنيف" field from module 04) — this is a one-time manual cleanup task for
-whoever owns the real chart of accounts, not something to guess from ambiguous legacy data.
+**Original gap** (kept here for history): `master_acc.accountCategoryType` — the field the
+`accounts` step originally read `category_id` from — is set on only 24 of 114 real accounts;
+the legacy system itself never classified roughly 80% of its own chart. `master_acc.class_acc`
+looked like a tempting fallback (it covers all 114) but was already found unreliable for this
+elsewhere (4 real expense accounts are tagged `class_acc=2` instead of `5`) — auto-deriving from
+it would silently misclassify those accounts, worse than leaving them blank.
+
+**Fix**: `categorize-accounts` (`src/steps/categorize-accounts.ts`) ignores both legacy fields
+entirely and instead classifies every account from a source the legacy data never corrupted —
+the account TREE itself (`accounts.parent_id`), which migrates at 100% integrity (see `verify`
+above). It walks each account to its top-level ancestor via a recursive query, then assigns one
+of the 22 real `account_categories` (themselves seeded correctly from the legacy
+`accountCategoryType_tb` in `categories.ts` — the legacy admins built a proper taxonomy, they
+just never finished tagging their own accounts with it) using accounting logic: "شيكات تحت
+التحصيل" sits under "الاصول المتداولة" whether or not anyone ever ticked a flag for it. A short
+list of exact-code overrides handles the handful of cases where the tree position alone isn't
+precise enough (e.g. "رواتب العمال" → مصاريف الرواتب والاجور specifically, not generic operating
+expenses; "الخصم المسموح به" → إيراد غير مباشر, since a sales discount is a contra-revenue item,
+not a cost of goods sold line — it was previously miscategorized under COGS by the one legacy
+flag that WAS set for it).
+
+**Must run last**: `inventory` (creates `COGS-DEFAULT`/`INV-DEFAULT` on demand) and
+`opening-balances` (creates `OB-VAR`/`RE` on demand) each add their own fallback accounts
+*after* the `accounts` step has already run — categorizing any earlier leaves exactly those 4
+system accounts uncategorized, the same gap this step exists to close. `npm run etl` runs the
+full pipeline in the correct order automatically; running steps individually, run
+`categorize-accounts` after everything else.
+
+**Result on the real backup**: 118/118 accounts categorized (114 real + 4 system fallbacks),
+zero left for manual cleanup — confirmed by re-querying `trial_balance()` for accounts with a
+category still null (0 rows). The income statement/balance sheet pages' "N accounts have no
+category" warning banner is dead code now for this dataset, but deliberately left in place — a
+different/future legacy dataset could still hit a genuine gap this tree-based logic can't infer
+(e.g. a business unit reorganized into a shape `categorize-accounts`'s override list doesn't
+anticipate), and the banner is the honest way to surface that rather than silently miscategorizing.
 
 ### Opening balances — how it works
 

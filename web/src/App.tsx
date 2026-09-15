@@ -27,6 +27,7 @@ import ItemDetail from './pages/ItemDetail.tsx';
 import StockMoves from './pages/StockMoves.tsx';
 import StockMoveNew from './pages/StockMoveNew.tsx';
 import StockMoveDetail from './pages/StockMoveDetail.tsx';
+import StockReservations from './pages/StockReservations.tsx';
 import SalesInvoices from './pages/SalesInvoices.tsx';
 import SalesInvoiceNew from './pages/SalesInvoiceNew.tsx';
 import SalesInvoiceDetail from './pages/SalesInvoiceDetail.tsx';
@@ -34,6 +35,18 @@ import PosCheckout from './pages/PosCheckout.tsx';
 import PurchaseInvoices from './pages/PurchaseInvoices.tsx';
 import PurchaseInvoiceNew from './pages/PurchaseInvoiceNew.tsx';
 import PurchaseInvoiceDetail from './pages/PurchaseInvoiceDetail.tsx';
+import SalesReturns from './pages/SalesReturns.tsx';
+import SalesReturnNew from './pages/SalesReturnNew.tsx';
+import SalesReturnDetail from './pages/SalesReturnDetail.tsx';
+import PurchaseReturns from './pages/PurchaseReturns.tsx';
+import PurchaseReturnNew from './pages/PurchaseReturnNew.tsx';
+import PurchaseReturnDetail from './pages/PurchaseReturnDetail.tsx';
+import SalesOrders from './pages/SalesOrders.tsx';
+import SalesOrderNew from './pages/SalesOrderNew.tsx';
+import SalesOrderDetail from './pages/SalesOrderDetail.tsx';
+import PurchaseOrders from './pages/PurchaseOrders.tsx';
+import PurchaseOrderNew from './pages/PurchaseOrderNew.tsx';
+import PurchaseOrderDetail from './pages/PurchaseOrderDetail.tsx';
 import FixedAssets from './pages/FixedAssets.tsx';
 import FixedAssetNew from './pages/FixedAssetNew.tsx';
 import FixedAssetDetail from './pages/FixedAssetDetail.tsx';
@@ -42,6 +55,8 @@ import PayrollRunNew from './pages/PayrollRunNew.tsx';
 import PayrollRunDetail from './pages/PayrollRunDetail.tsx';
 import IncomeStatement from './pages/IncomeStatement.tsx';
 import BalanceSheet from './pages/BalanceSheet.tsx';
+import ArAging from './pages/ArAging.tsx';
+import ApAging from './pages/ApAging.tsx';
 import Rooms from './pages/Rooms.tsx';
 import Reservations from './pages/Reservations.tsx';
 import ReservationNew from './pages/ReservationNew.tsx';
@@ -82,6 +97,7 @@ function Gate() {
         <Route path="/stock-moves" element={<StockMoves />} />
         <Route path="/stock-moves/new" element={<StockMoveNew />} />
         <Route path="/stock-moves/:id" element={<StockMoveDetail />} />
+        <Route path="/stock-reservations" element={<StockReservations />} />
         <Route path="/sales-invoices" element={<SalesInvoices />} />
         <Route path="/sales-invoices/new" element={<SalesInvoiceNew />} />
         <Route path="/sales-invoices/:id" element={<SalesInvoiceDetail />} />
@@ -89,6 +105,18 @@ function Gate() {
         <Route path="/purchase-invoices" element={<PurchaseInvoices />} />
         <Route path="/purchase-invoices/new" element={<PurchaseInvoiceNew />} />
         <Route path="/purchase-invoices/:id" element={<PurchaseInvoiceDetail />} />
+        <Route path="/sales-returns" element={<SalesReturns />} />
+        <Route path="/sales-returns/new" element={<SalesReturnNew />} />
+        <Route path="/sales-returns/:id" element={<SalesReturnDetail />} />
+        <Route path="/purchase-returns" element={<PurchaseReturns />} />
+        <Route path="/purchase-returns/new" element={<PurchaseReturnNew />} />
+        <Route path="/purchase-returns/:id" element={<PurchaseReturnDetail />} />
+        <Route path="/sales-orders" element={<SalesOrders />} />
+        <Route path="/sales-orders/new" element={<SalesOrderNew />} />
+        <Route path="/sales-orders/:id" element={<SalesOrderDetail />} />
+        <Route path="/purchase-orders" element={<PurchaseOrders />} />
+        <Route path="/purchase-orders/new" element={<PurchaseOrderNew />} />
+        <Route path="/purchase-orders/:id" element={<PurchaseOrderDetail />} />
         <Route path="/fixed-assets" element={<FixedAssets />} />
         <Route path="/fixed-assets/new" element={<FixedAssetNew />} />
         <Route path="/fixed-assets/:id" element={<FixedAssetDetail />} />
@@ -97,6 +125,8 @@ function Gate() {
         <Route path="/payroll/:id" element={<PayrollRunDetail />} />
         <Route path="/income-statement" element={<IncomeStatement />} />
         <Route path="/balance-sheet" element={<BalanceSheet />} />
+        <Route path="/ar-aging" element={<ArAging />} />
+        <Route path="/ap-aging" element={<ApAging />} />
         <Route path="/rooms" element={<Rooms />} />
         <Route path="/reservations" element={<Reservations />} />
         <Route path="/reservations/new" element={<ReservationNew />} />

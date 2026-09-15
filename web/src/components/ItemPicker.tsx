@@ -3,10 +3,12 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase.ts';
 import { fmtMoney, sanitizeSearchTerm } from '../lib/format.ts';
 
+export interface ItemUnitOpt { id: string; unit_name: string; conversion_factor: number; is_sales_default: boolean; is_purchase_default: boolean; }
 interface ItemHit {
   id: string; code: string; name_ar: string; base_unit_name: string; sales_price: number;
   onHand: number | null;    // null = stock unknown (no warehouse given)
   avgCost: number | null;   // null = unknown (no warehouse given) or no stock yet
+  units: ItemUnitOpt[];     // additional sale/purchase units beyond the base unit
 }
 
 /** Type-ahead search over the item catalog — never loads the whole table,
@@ -34,7 +36,7 @@ export function ItemPicker({
       const term = sanitizeSearchTerm(q);
       const { data, error } = await supabase
         .from('items')
-        .select('id, code, name_ar, base_unit_name, sales_price, item_warehouse_balances(qty, avg_cost, warehouse_id)')
+        .select('id, code, name_ar, base_unit_name, sales_price, item_warehouse_balances(qty, avg_cost, warehouse_id), item_units(id, unit_name, conversion_factor, is_sales_default, is_purchase_default)')
         .or(`name_ar.ilike.%${term}%,code.ilike.%${term}%`)
         .eq('is_stock_tracked', true)
         .eq('is_active', true)
@@ -46,6 +48,7 @@ export function ItemPicker({
           id: it.id, code: it.code, name_ar: it.name_ar, base_unit_name: it.base_unit_name, sales_price: it.sales_price,
           onHand: warehouseId ? Number(balance?.qty ?? 0) : null,
           avgCost: balance ? Number(balance.avg_cost) : null,
+          units: (it.item_units ?? []) as ItemUnitOpt[],
         };
       });
     },

@@ -16,6 +16,7 @@ supabase/.temp/
 
 # large source backup (kept locally, not in git)
 *.bak
+/backups/
 
 # analysis dumps (local reference only)
 /analysis/

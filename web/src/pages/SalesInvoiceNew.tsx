@@ -4,21 +4,28 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase.ts';
 import { useOrg } from '../lib/org.tsx';
 import { VAT_RATE, fmtMoney, today, translateError } from '../lib/format.ts';
-import { ItemPicker } from '../components/ItemPicker.tsx';
+import { ItemPicker, type ItemUnitOpt } from '../components/ItemPicker.tsx';
 
 interface DealerOpt { id: string; code: string; name_ar: string; }
 interface WhOpt { id: string; code: string; name_ar: string; }
 interface AccOpt { id: string; code: string; name_ar: string; }
 
-interface Line { key: number; itemId: string; itemLabel: string; qty: string; unitPrice: string; discountPct: string; onHand: number | null }
+interface Line {
+  key: number; itemId: string; itemLabel: string; qty: string; unitPrice: string; discountPct: string; onHand: number | null;
+  baseUnitName: string; unitId: string; units: ItemUnitOpt[];
+}
 let keySeq = 0;
-const emptyLine = (): Line => ({ key: keySeq++, itemId: '', itemLabel: '', qty: '1', unitPrice: '', discountPct: '0', onHand: null });
+const emptyLine = (): Line => ({
+  key: keySeq++, itemId: '', itemLabel: '', qty: '1', unitPrice: '', discountPct: '0', onHand: null,
+  baseUnitName: '', unitId: '', units: [],
+});
 
 export default function SalesInvoiceNew() {
   const { org } = useOrg();
   const nav = useNavigate();
 
   const [date, setDate] = useState(today());
+  const [dueDate, setDueDate] = useState(today());
   const [dealerId, setDealerId] = useState('');
   const [warehouseId, setWarehouseId] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<'credit' | 'cash'>('credit');
@@ -76,19 +83,24 @@ export default function SalesInvoiceNew() {
       if (!dealerId) throw new Error('اختر العميل');
       if (!warehouseId) throw new Error('اختر المستودع');
       if (paymentMethod === 'cash' && !cashAccountId) throw new Error('اختر حساب الصندوق/البنك للبيع النقدي');
+      if (paymentMethod === 'credit' && dueDate < date) throw new Error('تاريخ الاستحقاق لازم يكون بنفس تاريخ الفاتورة أو بعده');
       if (!vatAccountId) throw new Error('اختر حساب ضريبة المخرجات');
       const validLines = lines.filter((l) => l.itemId && (parseFloat(l.qty) || 0) > 0 && parseFloat(l.unitPrice) >= 0);
       if (validLines.length === 0) throw new Error('أضف صنفاً واحداً على الأقل');
-      const short = validLines.find((l) => l.onHand !== null && (parseFloat(l.qty) || 0) > l.onHand);
-      if (short) throw new Error(`الكمية المطلوبة لصنف "${short.itemLabel}" أكتر من المتوفر بالمستودع (${fmtMoney(short.onHand)}).`);
+      const short = validLines.find((l) => {
+        const factor = l.units.find((u) => u.id === l.unitId)?.conversion_factor ?? 1;
+        return l.onHand !== null && (parseFloat(l.qty) || 0) * factor > l.onHand;
+      });
+      if (short) throw new Error(`الكمية المطلوبة لصنف "${short.itemLabel}" أكتر من المتوفر بالمستودع (${fmtMoney(short.onHand)} ${short.baseUnitName}).`);
 
       const { data: invoiceId, error } = await supabase.rpc('create_sales_invoice', {
         p_org: org!.id, p_invoice_date: date, p_dealer_id: dealerId, p_warehouse_id: warehouseId,
         p_lines: validLines.map((l) => ({
           item_id: l.itemId, qty: parseFloat(l.qty), unit_price: parseFloat(l.unitPrice),
-          discount_pct: parseFloat(l.discountPct) || 0,
+          discount_pct: parseFloat(l.discountPct) || 0, unit_id: l.unitId || null,
         })),
         p_payment_method: paymentMethod, p_cash_account_id: paymentMethod === 'cash' ? cashAccountId : null,
+        p_due_date: paymentMethod === 'credit' ? dueDate : date,
       });
       if (error) throw error;
 
@@ -144,6 +156,12 @@ export default function SalesInvoiceNew() {
               {accounts?.map((a) => <option key={a.id} value={a.id}>{a.code} · {a.name_ar}</option>)}
             </select>
           )}
+          {paymentMethod === 'credit' && (
+            <div className="field" style={{ width: 160, margin: 0 }}>
+              <label>تاريخ الاستحقاق</label>
+              <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+            </div>
+          )}
         </div>
 
         <table style={{ marginTop: '0.5rem' }}>
@@ -151,6 +169,7 @@ export default function SalesInvoiceNew() {
             <tr>
               <th>الصنف</th>
               <th style={{ width: 90 }} className="num">الكمية</th>
+              <th style={{ width: 110 }}>الوحدة</th>
               <th style={{ width: 100 }} className="num">السعر</th>
               <th style={{ width: 90 }} className="num">خصم %</th>
               <th style={{ width: 100 }} className="num">الإجمالي</th>
@@ -161,26 +180,38 @@ export default function SalesInvoiceNew() {
             {lines.map((l) => {
               const lineTotal = (parseFloat(l.qty) || 0) * (parseFloat(l.unitPrice) || 0) * (1 - (parseFloat(l.discountPct) || 0) / 100);
               const qtyNum = parseFloat(l.qty) || 0;
-              const overStock = l.onHand !== null && qtyNum > l.onHand;
+              const factor = l.units.find((u) => u.id === l.unitId)?.conversion_factor ?? 1;
+              const baseQtyNeeded = qtyNum * factor;
+              const overStock = l.onHand !== null && baseQtyNeeded > l.onHand;
               return (
                 <tr key={l.key}>
                   <td>
                     <ItemPicker
                       initialLabel={l.itemLabel}
                       warehouseId={warehouseId || undefined}
-                      onPick={(it) => setLine(l.key, {
-                        itemId: it.id, itemLabel: `${it.code} · ${it.name_ar}`,
-                        unitPrice: l.unitPrice || String(it.sales_price),
-                        onHand: it.onHand,
-                      })}
+                      onPick={(it) => {
+                        const defaultUnit = it.units.find((u) => u.is_sales_default);
+                        setLine(l.key, {
+                          itemId: it.id, itemLabel: `${it.code} · ${it.name_ar}`,
+                          unitPrice: l.unitPrice || String(it.sales_price),
+                          onHand: it.onHand, baseUnitName: it.base_unit_name, units: it.units,
+                          unitId: defaultUnit?.id ?? '',
+                        });
+                      }}
                     />
                     {l.itemId && l.onHand !== null && (
                       <div className={overStock ? 'error' : 'muted'} style={{ fontSize: '0.78rem', marginTop: '0.2rem' }}>
-                        المتوفر بالمستودع: {fmtMoney(l.onHand)}
+                        المتوفر بالمستودع: {fmtMoney(l.onHand)} {l.baseUnitName}
                       </div>
                     )}
                   </td>
                   <td><input className="num" inputMode="decimal" value={l.qty} onChange={(e) => setLine(l.key, { qty: e.target.value })} style={overStock ? { borderColor: 'var(--danger)' } : undefined} /></td>
+                  <td>
+                    <select value={l.unitId} onChange={(e) => setLine(l.key, { unitId: e.target.value })} disabled={!l.itemId}>
+                      <option value="">{l.baseUnitName || '—'}</option>
+                      {l.units.map((u) => <option key={u.id} value={u.id}>{u.unit_name} (= {u.conversion_factor} {l.baseUnitName})</option>)}
+                    </select>
+                  </td>
                   <td><input className="num" inputMode="decimal" value={l.unitPrice} onChange={(e) => setLine(l.key, { unitPrice: e.target.value })} /></td>
                   <td><input className="num" inputMode="decimal" value={l.discountPct} onChange={(e) => setLine(l.key, { discountPct: e.target.value })} /></td>
                   <td className="num">{fmtMoney(lineTotal)}</td>
@@ -191,17 +222,17 @@ export default function SalesInvoiceNew() {
           </tbody>
           <tfoot>
             <tr>
-              <td colSpan={4}>المجموع قبل الضريبة</td>
+              <td colSpan={5}>المجموع قبل الضريبة</td>
               <td className="num">{fmtMoney(total)}</td>
               <td />
             </tr>
             <tr className="muted">
-              <td colSpan={4}>ضريبة القيمة المضافة (16%)</td>
+              <td colSpan={5}>ضريبة القيمة المضافة (16%)</td>
               <td className="num">{fmtMoney(total * VAT_RATE)}</td>
               <td />
             </tr>
             <tr style={{ fontWeight: 700 }}>
-              <td colSpan={4}>الإجمالي شامل الضريبة</td>
+              <td colSpan={5}>الإجمالي شامل الضريبة</td>
               <td className="num">{fmtMoney(total * (1 + VAT_RATE))}</td>
               <td />
             </tr>

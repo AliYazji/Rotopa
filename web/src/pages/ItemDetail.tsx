@@ -12,7 +12,8 @@ interface Item {
 }
 interface CatOpt { id: string; name_ar: string; }
 interface AccOpt { id: string; code: string; name_ar: string; }
-interface Balance { warehouse: { code: string; name_ar: string }; qty: number; avg_cost: number; }
+interface Balance { warehouse_id: string; warehouse: { code: string; name_ar: string }; qty: number; avg_cost: number; }
+interface UnitRow { id: string; unit_name: string; conversion_factor: number; is_sales_default: boolean; is_purchase_default: boolean; }
 interface MoveLine {
   base_qty: number; direction: 'in' | 'out'; unit_cost: number;
   warehouse: { name_ar: string };
@@ -31,6 +32,9 @@ export default function ItemDetail() {
   const [form, setForm] = useState<Partial<Item>>({});
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [newUnitName, setNewUnitName] = useState('');
+  const [newUnitFactor, setNewUnitFactor] = useState('');
+  const [unitErr, setUnitErr] = useState<string | null>(null);
 
   const { data: item, isLoading } = useQuery({
     queryKey: ['item', id],
@@ -66,11 +70,64 @@ export default function ItemDetail() {
     enabled: !!id,
     queryFn: async (): Promise<Balance[]> => {
       const { data, error } = await supabase.from('item_warehouse_balances')
-        .select('qty, avg_cost, warehouse:warehouse_id(code, name_ar)').eq('item_id', id);
+        .select('warehouse_id, qty, avg_cost, warehouse:warehouse_id(code, name_ar)').eq('item_id', id);
       if (error) throw error;
       return data as unknown as Balance[];
     },
   });
+
+  const { data: reservedByWarehouse } = useQuery({
+    queryKey: ['item-reservations-by-warehouse', id],
+    enabled: !!id,
+    queryFn: async (): Promise<Record<string, number>> => {
+      const { data, error } = await supabase.from('stock_reservations')
+        .select('warehouse_id, qty').eq('item_id', id).eq('status', 'active');
+      if (error) throw error;
+      const totals: Record<string, number> = {};
+      for (const r of data as { warehouse_id: string; qty: number }[]) totals[r.warehouse_id] = (totals[r.warehouse_id] ?? 0) + Number(r.qty);
+      return totals;
+    },
+  });
+
+  const { data: units } = useQuery({
+    queryKey: ['item-units', id],
+    enabled: !!id,
+    queryFn: async (): Promise<UnitRow[]> => {
+      const { data, error } = await supabase.from('item_units')
+        .select('id, unit_name, conversion_factor, is_sales_default, is_purchase_default')
+        .eq('item_id', id).order('conversion_factor');
+      if (error) throw error;
+      return data as UnitRow[];
+    },
+  });
+
+  async function addUnit() {
+    setUnitErr(null);
+    const factor = parseFloat(newUnitFactor);
+    if (!newUnitName.trim()) return setUnitErr('اكتب اسم الوحدة');
+    if (!(factor > 0)) return setUnitErr('معامل التحويل لازم يكون رقماً أكبر من صفر');
+    const { error } = await supabase.from('item_units').insert({ item_id: id, unit_name: newUnitName.trim(), conversion_factor: factor });
+    if (error) return setUnitErr(translateError(error.message));
+    setNewUnitName(''); setNewUnitFactor('');
+    await qc.invalidateQueries({ queryKey: ['item-units', id] });
+  }
+  async function deleteUnit(unitId: string) {
+    setUnitErr(null);
+    const { error } = await supabase.from('item_units').delete().eq('id', unitId);
+    if (error) return setUnitErr(translateError(error.message));
+    await qc.invalidateQueries({ queryKey: ['item-units', id] });
+  }
+  async function setDefault(unitId: string, field: 'is_sales_default' | 'is_purchase_default', value: boolean) {
+    setUnitErr(null);
+    // only one default per kind — clear the others first
+    if (value) {
+      const { error: clearErr } = await supabase.from('item_units').update({ [field]: false }).eq('item_id', id).neq('id', unitId);
+      if (clearErr) return setUnitErr(translateError(clearErr.message));
+    }
+    const { error } = await supabase.from('item_units').update({ [field]: value }).eq('id', unitId);
+    if (error) return setUnitErr(translateError(error.message));
+    await qc.invalidateQueries({ queryKey: ['item-units', id] });
+  }
 
   const { data: history } = useQuery({
     queryKey: ['item-history', id],
@@ -229,14 +286,73 @@ export default function ItemDetail() {
           <h2>الرصيد حسب المستودع</h2>
           <div className="card" style={{ padding: 0, overflowX: 'auto', marginBottom: '1.25rem' }}>
             <table>
-              <thead><tr><th>المستودع</th><th className="num" style={{ width: 120 }}>الكمية</th><th className="num" style={{ width: 120 }}>متوسط التكلفة</th></tr></thead>
+              <thead>
+                <tr>
+                  <th>المستودع</th>
+                  <th className="num" style={{ width: 110 }}>الكمية</th>
+                  <th className="num" style={{ width: 110 }}>محجوز</th>
+                  <th className="num" style={{ width: 110 }}>متاح للوعد</th>
+                  <th className="num" style={{ width: 120 }}>متوسط التكلفة</th>
+                </tr>
+              </thead>
               <tbody>
-                {(!balances || balances.length === 0) && <tr><td colSpan={3} className="muted">لا رصيد بعد.</td></tr>}
-                {balances?.filter((b) => Number(b.qty) !== 0).map((b, i) => (
-                  <tr key={i}><td>{b.warehouse.name_ar}</td><td className="num">{fmtMoney(b.qty)}</td><td className="num">{fmtMoney(b.avg_cost)}</td></tr>
-                ))}
+                {(!balances || balances.length === 0) && <tr><td colSpan={5} className="muted">لا رصيد بعد.</td></tr>}
+                {balances?.filter((b) => Number(b.qty) !== 0).map((b, i) => {
+                  const reserved = reservedByWarehouse?.[b.warehouse_id] ?? 0;
+                  return (
+                    <tr key={i}>
+                      <td>{b.warehouse.name_ar}</td>
+                      <td className="num">{fmtMoney(b.qty)}</td>
+                      <td className="num muted">{reserved > 0 ? fmtMoney(reserved) : '—'}</td>
+                      <td className="num" style={reserved > 0 ? { fontWeight: 600 } : undefined}>{fmtMoney(Number(b.qty) - reserved)}</td>
+                      <td className="num">{fmtMoney(b.avg_cost)}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
+          </div>
+
+          <h2>وحدات القياس</h2>
+          <p className="muted" style={{ marginTop: 0, fontSize: '0.85rem' }}>
+            وحدة إضافية للبيع/الشراء بالجملة (مثلاً "كرتون" = 12 {item.base_unit_name}) — تُختار عند إنشاء فاتورة،
+            وتتحوّل تلقائياً للوحدة الأساسية بالمخزون والتكلفة.
+          </p>
+          <div className="card" style={{ padding: 0, overflowX: 'auto', marginBottom: '1.25rem' }}>
+            <table>
+              <thead>
+                <tr>
+                  <th>الوحدة</th>
+                  <th className="num" style={{ width: 140 }}>= كم {item.base_unit_name}</th>
+                  <th style={{ width: 90 }}>افتراضي للبيع</th>
+                  <th style={{ width: 90 }}>افتراضي للشراء</th>
+                  <th style={{ width: 40 }} />
+                </tr>
+              </thead>
+              <tbody>
+                {units?.map((u) => (
+                  <tr key={u.id}>
+                    <td>{u.unit_name}</td>
+                    <td className="num">{fmtMoney(u.conversion_factor)}</td>
+                    <td>
+                      <input type="checkbox" checked={u.is_sales_default} onChange={(e) => setDefault(u.id, 'is_sales_default', e.target.checked)} />
+                    </td>
+                    <td>
+                      <input type="checkbox" checked={u.is_purchase_default} onChange={(e) => setDefault(u.id, 'is_purchase_default', e.target.checked)} />
+                    </td>
+                    <td><button type="button" onClick={() => deleteUnit(u.id)}>×</button></td>
+                  </tr>
+                ))}
+                {(!units || units.length === 0) && <tr><td colSpan={5} className="muted">ما في وحدات إضافية — البيع/الشراء بالوحدة الأساسية فقط.</td></tr>}
+                <tr>
+                  <td><input value={newUnitName} onChange={(e) => setNewUnitName(e.target.value)} placeholder="اسم الوحدة (مثلاً كرتون)" /></td>
+                  <td><input className="num" inputMode="decimal" value={newUnitFactor} onChange={(e) => setNewUnitFactor(e.target.value)} placeholder="12" /></td>
+                  <td colSpan={2} />
+                  <td><button type="button" className="btn-primary" onClick={addUnit}>+</button></td>
+                </tr>
+              </tbody>
+            </table>
+            {unitErr && <p className="error" style={{ padding: '0 0.5rem 0.5rem' }}>{unitErr}</p>}
           </div>
 
           <h2>حركة المخزون</h2>
