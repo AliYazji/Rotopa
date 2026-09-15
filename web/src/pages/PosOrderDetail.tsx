@@ -1,9 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase.ts';
 import { useOrg } from '../lib/org.tsx';
-import { VAT_RATE, fmtMoney, translateError } from '../lib/format.ts';
+import { fmtMoney, fmtPct, translateError } from '../lib/format.ts';
 import { ItemPicker } from '../components/ItemPicker.tsx';
 
 interface Order {
@@ -22,7 +22,7 @@ const BADGE: Record<string, string> = { open: 'draft', settled: 'posted', cancel
 export default function PosOrderDetail() {
   const { id } = useParams();
   const nav = useNavigate();
-  const { org } = useOrg();
+  const { org, taxRate, taxEnabled, defaultAccounts } = useOrg();
   const qc = useQueryClient();
 
   const [qty, setQty] = useState('1');
@@ -35,6 +35,12 @@ export default function PosOrderDetail() {
   const [cancelReason, setCancelReason] = useState('');
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    setCashAccountId((v) => v || defaultAccounts.cashAccountId);
+    setVatAccountId((v) => v || defaultAccounts.outputVatAccountId);
+    setDefaultSalesAccountId((v) => v || defaultAccounts.salesAccountId);
+  }, [defaultAccounts]);
 
   const { data: order, isLoading } = useQuery({
     queryKey: ['pos-order', id], enabled: !!id,
@@ -78,9 +84,9 @@ export default function PosOrderDetail() {
 
   const totals = useMemo(() => {
     const subtotal = (lines ?? []).reduce((s, l) => s + Number(l.line_total), 0);
-    const vat = subtotal * VAT_RATE;
+    const vat = subtotal * taxRate;
     return { subtotal, vat, grand: subtotal + vat };
-  }, [lines]);
+  }, [lines, taxRate]);
 
   async function refresh() {
     await qc.invalidateQueries({ queryKey: ['pos-order', id] });
@@ -123,7 +129,7 @@ export default function PosOrderDetail() {
 
   async function settle() {
     setErr(null);
-    if (!vatAccountId) return setErr('اختر حساب ضريبة المخرجات');
+    if (taxEnabled && !vatAccountId) return setErr('اختر حساب ضريبة المخرجات');
     const effectiveDealerId = dealerId || (paymentType === 'cash' ? walkinDealer?.id : '');
     if (paymentType === 'credit' && (!dealerId || dealerId === walkinDealer?.id)) return setErr('اختر زبوناً مسجّلاً للتسوية الآجلة');
     if (paymentType === 'cash' && !cashAccountId) return setErr('اختر الصندوق');
@@ -134,7 +140,7 @@ export default function PosOrderDetail() {
       const { data: invoiceId, error } = await supabase.rpc('settle_pos_order', {
         p_order_id: id, p_payment_method: paymentType, p_dealer_id: effectiveDealerId,
         p_cash_account_id: paymentType === 'cash' ? cashAccountId : null,
-        p_default_sales_account_id: defaultSalesAccountId || null, p_output_vat_account_id: vatAccountId,
+        p_default_sales_account_id: defaultSalesAccountId || null, p_output_vat_account_id: taxEnabled ? vatAccountId : null,
       });
       if (error) throw error;
       await refresh();
@@ -171,7 +177,7 @@ export default function PosOrderDetail() {
           </tbody>
           <tfoot>
             <tr><td colSpan={3}>المجموع قبل الضريبة</td><td className="num">{fmtMoney(totals.subtotal)}</td>{order.status === 'open' && <td />}</tr>
-            <tr className="muted"><td colSpan={3}>ضريبة القيمة المضافة (16%)</td><td className="num">{fmtMoney(totals.vat)}</td>{order.status === 'open' && <td />}</tr>
+            {taxEnabled && <tr className="muted"><td colSpan={3}>ضريبة القيمة المضافة ({fmtPct(taxRate)})</td><td className="num">{fmtMoney(totals.vat)}</td>{order.status === 'open' && <td />}</tr>}
             <tr style={{ fontWeight: 700 }}><td colSpan={3}>الإجمالي شامل الضريبة</td><td className="num">{fmtMoney(totals.grand)}</td>{order.status === 'open' && <td />}</tr>
           </tfoot>
         </table>
@@ -215,13 +221,15 @@ export default function PosOrderDetail() {
                 {customers?.filter((c) => c.id !== walkinDealer?.id).map((c) => <option key={c.id} value={c.id}>{c.name_ar}</option>)}
               </select>
             </div>
-            <div className="field">
-              <label>حساب ضريبة المخرجات</label>
-              <select value={vatAccountId} onChange={(e) => setVatAccountId(e.target.value)}>
-                <option value="">—</option>
-                {accounts?.map((a) => <option key={a.id} value={a.id}>{a.code} · {a.name_ar}</option>)}
-              </select>
-            </div>
+            {taxEnabled && (
+              <div className="field">
+                <label>حساب ضريبة المخرجات</label>
+                <select value={vatAccountId} onChange={(e) => setVatAccountId(e.target.value)}>
+                  <option value="">—</option>
+                  {accounts?.map((a) => <option key={a.id} value={a.id}>{a.code} · {a.name_ar}</option>)}
+                </select>
+              </div>
+            )}
             <div className="field">
               <label>حساب المبيعات الافتراضي (لصنف بلا حساب خاص)</label>
               <select value={defaultSalesAccountId} onChange={(e) => setDefaultSalesAccountId(e.target.value)}>

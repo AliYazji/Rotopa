@@ -3,7 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase.ts';
 import { useOrg } from '../lib/org.tsx';
-import { VAT_RATE, fmtDate, fmtMoney, today, translateError } from '../lib/format.ts';
+import { fmtDate, fmtMoney, fmtPct, today, translateError } from '../lib/format.ts';
 import { ItemPicker, type ItemUnitOpt } from '../components/ItemPicker.tsx';
 import { PrintInvoice } from '../components/PrintInvoice.tsx';
 
@@ -39,7 +39,7 @@ const STATUS: Record<string, string> = { draft: 'مسودة', posted: 'مرحّ�
 export default function SalesInvoiceDetail() {
   const { id } = useParams();
   const nav = useNavigate();
-  const { org } = useOrg();
+  const { org, taxRate, taxEnabled, defaultAccounts } = useOrg();
   const qc = useQueryClient();
   const [reason, setReason] = useState('');
   const [err, setErr] = useState<string | null>(null);
@@ -83,11 +83,20 @@ export default function SalesInvoiceDetail() {
   useEffect(() => {
     if (invoice) {
       setDealerId(invoice.dealer_id); setWarehouseId(invoice.warehouse_id);
-      setPaymentMethod(invoice.payment_method); setCashAccountId(invoice.cash_account_id ?? '');
+      setPaymentMethod(invoice.payment_method);
+      if (invoice.cash_account_id) setCashAccountId(invoice.cash_account_id);
       setDesc(invoice.description ?? ''); setDueDate(invoice.due_date);
     }
   }, [invoice]);
   useEffect(() => { if (lines) setEditLines(lines.map(toEditLine)); }, [lines]);
+  // org-level defaults (Settings > الحسابات الافتراضية) fill in whatever
+  // the loaded draft/document didn't already have — never overrides a real
+  // stored value or a choice the user already made on this form
+  useEffect(() => {
+    setCashAccountId((v) => v || defaultAccounts.cashAccountId);
+    setDefaultSalesAccountId((v) => v || defaultAccounts.salesAccountId);
+    setVatAccountId((v) => v || defaultAccounts.outputVatAccountId);
+  }, [defaultAccounts]);
 
   const { data: customers } = useQuery({
     queryKey: ['customers-lite', org?.id], enabled: !!org,
@@ -158,9 +167,9 @@ export default function SalesInvoiceDetail() {
 
   async function postDraft() {
     setErr(null); setBusy(true);
-    if (!vatAccountId) { setBusy(false); return setErr('اختر حساب ضريبة المخرجات'); }
+    if (taxEnabled && !vatAccountId) { setBusy(false); return setErr('اختر حساب ضريبة المخرجات'); }
     const { error } = await supabase.rpc('post_sales_invoice', {
-      p_invoice_id: id, p_default_sales_account_id: defaultSalesAccountId || null, p_output_vat_account_id: vatAccountId,
+      p_invoice_id: id, p_default_sales_account_id: defaultSalesAccountId || null, p_output_vat_account_id: taxEnabled ? vatAccountId : null,
     });
     setBusy(false);
     if (error) return setErr(translateError(error.message));
@@ -222,7 +231,7 @@ export default function SalesInvoiceDetail() {
             unitLabel: l.unit?.unit_name ?? l.item?.base_unit_name ?? '', unitPrice: l.unit_price,
             discountPct: l.discount_pct, total: l.line_total,
           }))}
-          subtotal={total} vat={total * VAT_RATE} total={total * (1 + VAT_RATE)}
+          subtotal={total} vat={total * taxRate} total={total * (1 + taxRate)}
         />
       )}
       <div className="no-print">
@@ -326,8 +335,8 @@ export default function SalesInvoiceDetail() {
             </tbody>
             <tfoot>
               <tr><td colSpan={4}>المجموع قبل الضريبة</td><td className="num">{fmtMoney(total)}</td><td /></tr>
-              <tr className="muted"><td colSpan={4}>ضريبة القيمة المضافة (16%)</td><td className="num">{fmtMoney(total * VAT_RATE)}</td><td /></tr>
-              <tr style={{ fontWeight: 700 }}><td colSpan={4}>الإجمالي شامل الضريبة</td><td className="num">{fmtMoney(total * (1 + VAT_RATE))}</td><td /></tr>
+              {taxEnabled && <tr className="muted"><td colSpan={4}>ضريبة القيمة المضافة ({fmtPct(taxRate)})</td><td className="num">{fmtMoney(total * taxRate)}</td><td /></tr>}
+              <tr style={{ fontWeight: 700 }}><td colSpan={4}>الإجمالي شامل الضريبة</td><td className="num">{fmtMoney(total * (1 + taxRate))}</td><td /></tr>
             </tfoot>
           </table>
           <button type="button" onClick={() => setEditLines((ls) => [...ls, { key: keySeq++, itemId: '', itemLabel: '', qty: '1', unitPrice: '', discountPct: '0', baseUnitName: '', unitId: '', units: [] }])} style={{ marginTop: '0.5rem' }}>+ صنف</button>
@@ -373,14 +382,16 @@ export default function SalesInvoiceDetail() {
                 <td className="num">{fmtMoney(total)}</td>
                 {invoice.status !== 'draft' && <td />}
               </tr>
-              <tr className="muted">
-                <td colSpan={4}>ضريبة القيمة المضافة (16%)</td>
-                <td className="num">{fmtMoney(total * VAT_RATE)}</td>
-                {invoice.status !== 'draft' && <td />}
-              </tr>
+              {taxEnabled && (
+                <tr className="muted">
+                  <td colSpan={4}>ضريبة القيمة المضافة ({fmtPct(taxRate)})</td>
+                  <td className="num">{fmtMoney(total * taxRate)}</td>
+                  {invoice.status !== 'draft' && <td />}
+                </tr>
+              )}
               <tr style={{ fontWeight: 700 }}>
                 <td colSpan={4}>الإجمالي شامل الضريبة</td>
-                <td className="num">{fmtMoney(total * (1 + VAT_RATE))}</td>
+                <td className="num">{fmtMoney(total * (1 + taxRate))}</td>
                 {invoice.status !== 'draft' && <td />}
               </tr>
             </tfoot>
@@ -392,7 +403,9 @@ export default function SalesInvoiceDetail() {
         <div className="card" style={{ maxWidth: 460 }}>
           <h2 style={{ fontSize: '0.95rem' }}>ترحيل الفاتورة</h2>
           <p className="muted" style={{ fontSize: '0.85rem' }}>
-            الإجمالي شامل الضريبة (16%): <strong>{fmtMoney(total * (1 + VAT_RATE))}</strong> (منها {fmtMoney(total * VAT_RATE)} ضريبة)
+            {taxEnabled
+              ? <>الإجمالي شامل الضريبة ({fmtPct(taxRate)}): <strong>{fmtMoney(total * (1 + taxRate))}</strong> (منها {fmtMoney(total * taxRate)} ضريبة)</>
+              : <>الإجمالي (الضريبة معطّلة): <strong>{fmtMoney(total)}</strong></>}
           </p>
           <div className="field">
             <label>حساب المبيعات الافتراضي (لأي صنف بلا حساب خاص)</label>
@@ -401,13 +414,15 @@ export default function SalesInvoiceDetail() {
               {accounts?.map((a) => <option key={a.id} value={a.id}>{a.code} · {a.name_ar}</option>)}
             </select>
           </div>
-          <div className="field">
-            <label>حساب ضريبة المخرجات</label>
-            <select value={vatAccountId} onChange={(e) => setVatAccountId(e.target.value)}>
-              <option value="">—</option>
-              {accounts?.map((a) => <option key={a.id} value={a.id}>{a.code} · {a.name_ar}</option>)}
-            </select>
-          </div>
+          {taxEnabled && (
+            <div className="field">
+              <label>حساب ضريبة المخرجات</label>
+              <select value={vatAccountId} onChange={(e) => setVatAccountId(e.target.value)}>
+                <option value="">—</option>
+                {accounts?.map((a) => <option key={a.id} value={a.id}>{a.code} · {a.name_ar}</option>)}
+              </select>
+            </div>
+          )}
           {err && <p className="error">{err}</p>}
           <div className="row">
             <button className="btn-primary" disabled={busy} onClick={postDraft}>ترحيل</button>

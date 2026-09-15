@@ -36,8 +36,10 @@ const nav: { section: string | null; items: { to: string; label: string }[] }[] 
     items: [
       { to: '/items', label: 'الأصناف' },
       { to: '/item-categories', label: 'فئات الأصناف' },
+      { to: '/warehouses', label: 'المستودعات' },
       { to: '/stock-moves', label: 'حركات المخزون' },
       { to: '/stock-reservations', label: 'حجز المخزون' },
+      { to: '/manufacturing-orders', label: 'أوامر التصنيع' },
     ],
   },
   {

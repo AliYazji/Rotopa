@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase.ts';
-import { VAT_RATE, fmtDate, fmtMoney, today, translateError } from '../lib/format.ts';
+import { useOrg } from '../lib/org.tsx';
+import { fmtDate, fmtMoney, fmtPct, today, translateError } from '../lib/format.ts';
 
 interface ReturnDoc {
   id: string; return_no: number; return_date: string; status: 'draft' | 'posted' | 'void';
@@ -20,11 +21,16 @@ const STATUS: Record<string, string> = { draft: 'مسودة', posted: 'مرحّ�
 export default function PurchaseReturnDetail() {
   const { id } = useParams();
   const nav = useNavigate();
+  const { taxRate, taxEnabled, defaultAccounts } = useOrg();
   const qc = useQueryClient();
   const [reason, setReason] = useState('');
   const [vatAccountId, setVatAccountId] = useState('');
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    setVatAccountId((v) => v || defaultAccounts.inputVatAccountId);
+  }, [defaultAccounts]);
 
   const { data: ret, isLoading } = useQuery({
     queryKey: ['purchase-return', id],
@@ -64,8 +70,8 @@ export default function PurchaseReturnDetail() {
 
   async function postReturn() {
     setErr(null); setBusy(true);
-    if (!vatAccountId) { setBusy(false); return setErr('اختر حساب ضريبة المدخلات'); }
-    const { error } = await supabase.rpc('post_purchase_return', { p_return_id: id, p_input_vat_account_id: vatAccountId });
+    if (taxEnabled && !vatAccountId) { setBusy(false); return setErr('اختر حساب ضريبة المدخلات'); }
+    const { error } = await supabase.rpc('post_purchase_return', { p_return_id: id, p_input_vat_account_id: taxEnabled ? vatAccountId : null });
     setBusy(false);
     if (error) return setErr(translateError(error.message));
     await refresh();
@@ -123,8 +129,8 @@ export default function PurchaseReturnDetail() {
           </tbody>
           <tfoot>
             <tr><td colSpan={3}>المجموع قبل الضريبة</td><td className="num">{fmtMoney(total)}</td></tr>
-            <tr className="muted"><td colSpan={3}>ضريبة القيمة المضافة (16%)</td><td className="num">{fmtMoney(total * VAT_RATE)}</td></tr>
-            <tr style={{ fontWeight: 700 }}><td colSpan={3}>الإجمالي شامل الضريبة</td><td className="num">{fmtMoney(total * (1 + VAT_RATE))}</td></tr>
+            {taxEnabled && <tr className="muted"><td colSpan={3}>ضريبة القيمة المضافة ({fmtPct(taxRate)})</td><td className="num">{fmtMoney(total * taxRate)}</td></tr>}
+            <tr style={{ fontWeight: 700 }}><td colSpan={3}>الإجمالي شامل الضريبة</td><td className="num">{fmtMoney(total * (1 + taxRate))}</td></tr>
           </tfoot>
         </table>
       </div>
@@ -132,13 +138,15 @@ export default function PurchaseReturnDetail() {
       {ret.status === 'draft' && (
         <div className="card" style={{ maxWidth: 460 }}>
           <h2 style={{ fontSize: '0.95rem' }}>ترحيل المرجع</h2>
-          <div className="field">
-            <label>حساب ضريبة المدخلات</label>
-            <select value={vatAccountId} onChange={(e) => setVatAccountId(e.target.value)}>
-              <option value="">—</option>
-              {accounts?.map((a) => <option key={a.id} value={a.id}>{a.code} · {a.name_ar}</option>)}
-            </select>
-          </div>
+          {taxEnabled && (
+            <div className="field">
+              <label>حساب ضريبة المدخلات</label>
+              <select value={vatAccountId} onChange={(e) => setVatAccountId(e.target.value)}>
+                <option value="">—</option>
+                {accounts?.map((a) => <option key={a.id} value={a.id}>{a.code} · {a.name_ar}</option>)}
+              </select>
+            </div>
+          )}
           {err && <p className="error">{err}</p>}
           <div className="row">
             <button className="btn-primary" disabled={busy} onClick={postReturn}>ترحيل</button>

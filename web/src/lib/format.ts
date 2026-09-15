@@ -12,11 +12,12 @@ export const fmtDate = (d: string | null | undefined) =>
 
 export const today = () => new Date().toISOString().slice(0, 10);
 
-// Mirrors app.vat_rate() on the database side (20250911002000_vat.sql) —
-// single flat rate for the whole system, no per-item exemption yet. Only
-// used here to show the customer/supplier-facing total before posting;
-// the database is the actual source of truth for what gets posted.
-export const VAT_RATE = 0.16;
+// app.vat_rate(org_id) is now per-organization and editable/toggleable from
+// /settings (20250911003500_configurable_tax.sql) — pages read the live
+// rate from useOrg().taxRate instead of a static constant. This only
+// formats the "(16%)"-style label; the database is the source of truth
+// for what actually gets posted.
+export const fmtPct = (rate: number) => `${+(rate * 100).toFixed(2)}%`;
 
 /**
  * PostgREST's .or()/.ilike() filter strings are built by hand-interpolating
@@ -60,6 +61,26 @@ const ERROR_PATTERNS: [RegExp, (m: RegExpMatchArray) => string][] = [
   [/update or delete on table "account_categories" violates foreign key constraint/, () => 'لا يمكن حذف هذا التصنيف — يوجد حسابات مرتبطة به.'],
   [/duplicate key value violates unique constraint "item_categories_org_id_code_key"/, () => 'هذا الرمز مستخدَم بفئة أخرى.'],
   [/duplicate key value violates unique constraint "account_categories_org_id_code_key"/, () => 'هذا الرمز مستخدَم بتصنيف آخر.'],
+
+  [/no bill of materials for this item and no lines were given explicitly/, () => 'هذا الصنف بلا وصفة تصنيع (BOM) — أضِف مكوّناته أولاً من صفحة الصنف.'],
+  [/manufacturing order not found/, () => 'أمر التصنيع غير موجود.'],
+  [/manufacturing order has no lines/, () => 'أضف مكوّناً واحداً على الأقل.'],
+  [/only a draft manufacturing order can be posted \(this one is (\w+)\)/, () => 'أمر التصنيع مُرحّل أو ملغى بالفعل.'],
+  [/a labor cost account is required — this order has a labor cost/, () => 'حدد حساب العمالة — هذا الأمر فيه تكلفة عمالة.'],
+  [/an equipment cost account is required — this order has an equipment cost/, () => 'حدد حساب المعدات — هذا الأمر فيه تكلفة معدات.'],
+  [/a subcontractor cost account is required — this order has a subcontractor cost/, () => 'حدد حساب المقاولين — هذا الأمر فيه تكلفة مقاولين.'],
+  [/an other-cost account is required — this order has an other cost/, () => 'حدد حساب التكاليف الأخرى — هذا الأمر فيه تكلفة أخرى.'],
+  [/a posted manufacturing order is immutable; reverse it with void_manufacturing_order\(\)/, () => 'أمر التصنيع المُرحّل ثابت — استخدم الإلغاء لعكسه.'],
+  [/only a posted manufacturing order can be voided/, () => 'الإلغاء يكون فقط للأمر المُرحّل.'],
+  [/a void manufacturing order cannot be modified/, () => 'هذا الأمر ملغى بالفعل.'],
+  [/manufacturing order \S+ is (\w+); its lines are frozen/, () => 'أمر التصنيع لم يعد مسودة — لا يمكن تعديل مكوّناته.'],
+  [/violates check constraint "bom_lines_check"/, () => 'لا يمكن أن يكون الصنف مكوّناً لنفسه.'],
+  [/duplicate key value violates unique constraint "warehouses_org_id_code_key"/, () => 'هذا الرمز مستخدَم بمستودع آخر.'],
+
+  [/a composite item on this invoice has no recipe \(bom_lines\) defined/, () => 'صنف مركّب بلا وصفة تصنيع (BOM) — أضِف مكوّناته أولاً من صفحة الصنف.'],
+  [/a composite item on this invoice has no COGS account set/, () => 'صنف مركّب بلا حساب تكلفة — حدده أولاً من صفحة الصنف.'],
+  [/returning a composite item is not supported yet/, () => 'إرجاع صنف مركّب غير مدعوم حالياً.'],
+  [/violates check constraint "items_composite_not_stock_tracked"/, () => 'صنف مركّب لا يمكن أن يتتبّع مخزوناً خاصاً به بنفس الوقت.'],
   [/not authorized: (\S+) on org/, () => 'لا تملك الصلاحية اللازمة لهذا الإجراء.'],
   [/account \S+ is not postable/, () => 'هذا الحساب حساب تجميع (أب) ولا يقبل حركات مباشرة.'],
   [/does not currently accept transactions/, () => 'هذا الحساب موقوف مؤقتاً عن قبول الحركات.'],

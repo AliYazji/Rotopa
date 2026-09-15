@@ -1,9 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase.ts';
 import { useOrg } from '../lib/org.tsx';
-import { VAT_RATE, fmtMoney, today, translateError } from '../lib/format.ts';
+import { fmtMoney, fmtPct, today, translateError } from '../lib/format.ts';
 import { ItemPicker, type ItemUnitOpt } from '../components/ItemPicker.tsx';
 
 interface DealerOpt { id: string; code: string; name_ar: string; }
@@ -21,7 +21,7 @@ const emptyLine = (): Line => ({
 });
 
 export default function PurchaseInvoiceNew() {
-  const { org } = useOrg();
+  const { org, taxRate, taxEnabled, defaultAccounts } = useOrg();
   const nav = useNavigate();
 
   const [date, setDate] = useState(today());
@@ -33,6 +33,11 @@ export default function PurchaseInvoiceNew() {
   const [vatAccountId, setVatAccountId] = useState('');
   const [lines, setLines] = useState<Line[]>([emptyLine()]);
   const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    setCashAccountId((v) => v || defaultAccounts.cashAccountId);
+    setVatAccountId((v) => v || defaultAccounts.inputVatAccountId);
+  }, [defaultAccounts]);
   const [busy, setBusy] = useState(false);
 
   const { data: suppliers } = useQuery({
@@ -207,14 +212,16 @@ export default function PurchaseInvoiceNew() {
               <td className="num">{fmtMoney(total)}</td>
               <td />
             </tr>
-            <tr className="muted">
-              <td colSpan={5}>ضريبة القيمة المضافة (16%)</td>
-              <td className="num">{fmtMoney(total * VAT_RATE)}</td>
-              <td />
-            </tr>
+            {taxEnabled && (
+              <tr className="muted">
+                <td colSpan={5}>ضريبة القيمة المضافة ({fmtPct(taxRate)})</td>
+                <td className="num">{fmtMoney(total * taxRate)}</td>
+                <td />
+              </tr>
+            )}
             <tr style={{ fontWeight: 700 }}>
               <td colSpan={5}>الإجمالي شامل الضريبة</td>
-              <td className="num">{fmtMoney(total * (1 + VAT_RATE))}</td>
+              <td className="num">{fmtMoney(total * (1 + taxRate))}</td>
               <td />
             </tr>
           </tfoot>

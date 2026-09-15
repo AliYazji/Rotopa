@@ -3,10 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase.ts';
 import { useOrg } from '../lib/org.tsx';
-import { VAT_RATE, fmtMoney, sanitizeSearchTerm, today, translateError } from '../lib/format.ts';
+import { fmtMoney, fmtPct, sanitizeSearchTerm, today, translateError } from '../lib/format.ts';
+import { AccountSelect, type AccOpt } from '../components/AccountSelect.tsx';
 
 interface WhOpt { id: string; code: string; name_ar: string; }
-interface AccOpt { id: string; code: string; name_ar: string; category_id: string | null; account_categories: { name_ar: string } | null; }
 interface CatOpt { id: string; name_ar: string; }
 interface DealerOpt { id: string; code: string; name_ar: string; }
 interface ItemHit {
@@ -21,33 +21,8 @@ const SETTINGS_KEYS = ['warehouseId', 'vatAccountId', 'defaultSalesAccountId', '
 type Settings = Record<(typeof SETTINGS_KEYS)[number], string>;
 const emptySettings: Settings = { warehouseId: '', vatAccountId: '', defaultSalesAccountId: '', cashAccountId: '' };
 
-// grouped <optgroup> account picker, reused for every account select on this
-// page (VAT/default-sales/register) — ~90 real accounts flat was hard to scan
-function AccountSelect({ value, onChange, placeholder, accounts }: {
-  value: string; onChange: (v: string) => void; placeholder: string; accounts: AccOpt[] | undefined;
-}) {
-  const order: string[] = [];
-  const groups = new Map<string, { label: string; rows: AccOpt[] }>();
-  for (const a of accounts ?? []) {
-    const key = a.category_id ?? 'none';
-    const label = a.account_categories?.name_ar ?? UNCATEGORIZED;
-    if (!groups.has(key)) { groups.set(key, { label, rows: [] }); order.push(key); }
-    groups.get(key)!.rows.push(a);
-  }
-  return (
-    <select value={value} onChange={(e) => onChange(e.target.value)}>
-      <option value="">{placeholder}</option>
-      {order.map((key) => (
-        <optgroup key={key} label={groups.get(key)!.label}>
-          {groups.get(key)!.rows.map((a) => <option key={a.id} value={a.id}>{a.code} · {a.name_ar}</option>)}
-        </optgroup>
-      ))}
-    </select>
-  );
-}
-
 export default function PosCheckout() {
-  const { org } = useOrg();
+  const { org, taxRate, taxEnabled, defaultAccounts } = useOrg();
   const nav = useNavigate();
   const qc = useQueryClient();
 
@@ -89,6 +64,17 @@ export default function PosCheckout() {
     const firstId = warehouses?.[0]?.id;
     if (firstId) setSettings((s) => (s.warehouseId ? s : { ...s, warehouseId: firstId }));
   }, [warehouses]); // eslint-disable-line react-hooks/exhaustive-deps
+  // org-level default accounts (Settings > الحسابات الافتراضية) fill in
+  // whatever a saved localStorage session didn't already have — a fresh
+  // device/browser now starts pre-filled instead of blank every time
+  useEffect(() => {
+    setSettings((s) => ({
+      ...s,
+      vatAccountId: s.vatAccountId || defaultAccounts.outputVatAccountId,
+      defaultSalesAccountId: s.defaultSalesAccountId || defaultAccounts.salesAccountId,
+      cashAccountId: s.cashAccountId || defaultAccounts.cashAccountId,
+    }));
+  }, [defaultAccounts]);
   const { data: accounts } = useQuery({
     queryKey: ['postable-accounts-grouped', org?.id], enabled: !!org,
     queryFn: async (): Promise<AccOpt[]> => {
@@ -136,8 +122,9 @@ export default function PosCheckout() {
         .select('id, code, name_ar, sales_price, base_unit_name, category_id, item_warehouse_balances(qty, warehouse_id)')
         .eq('is_active', true).eq('is_stock_tracked', true).order('name_ar').limit(40);
       // no search/category chosen yet -> a default browse list (capped at
-      // 40) instead of an empty grid; typing or picking a category narrows it
-      if (term.length >= 2) q = q.or(`name_ar.ilike.%${term}%,code.ilike.%${term}%`);
+      // 40) instead of an empty grid; typing, scanning a barcode, or picking
+      // a category narrows it
+      if (term.length >= 2) q = q.or(`name_ar.ilike.%${term}%,code.ilike.%${term}%,barcode.ilike.%${term}%`);
       if (categoryId) q = q.eq('category_id', categoryId);
       const { data, error } = await q;
       if (error) throw error;
@@ -164,9 +151,9 @@ export default function PosCheckout() {
 
   const totals = useMemo(() => {
     const subtotal = cart.reduce((s, l) => s + l.unitPrice * l.qty, 0);
-    const vat = subtotal * VAT_RATE;
+    const vat = subtotal * taxRate;
     return { subtotal, vat, grand: subtotal + vat };
-  }, [cart]);
+  }, [cart, taxRate]);
   const overStockLine = cart.find((l) => l.onHand !== null && l.qty > l.onHand);
 
   function addToCart(hit: ItemHit) {
@@ -206,7 +193,7 @@ export default function PosCheckout() {
     setErr(null);
     if (cart.length === 0) return setErr('السلة فاضية');
     if (!settings.warehouseId) return setErr('اختر المستودع من الإعدادات فوق');
-    if (!settings.vatAccountId) return setErr('اختر حساب ضريبة المخرجات من الإعدادات فوق');
+    if (taxEnabled && !settings.vatAccountId) return setErr('اختر حساب ضريبة المخرجات من الإعدادات فوق');
     if (overStockLine) return setErr(`الكمية المطلوبة لصنف "${overStockLine.name}" أكتر من المتوفر (${fmtMoney(overStockLine.onHand)}).`);
     // فوري defaults to the walk-in customer but can be any real customer too
     // (a regular customer paying cash instead of on credit); آجل must be a
@@ -227,7 +214,7 @@ export default function PosCheckout() {
 
       const { error: pErr } = await supabase.rpc('post_sales_invoice', {
         p_invoice_id: invoiceId, p_default_sales_account_id: settings.defaultSalesAccountId || null,
-        p_output_vat_account_id: settings.vatAccountId,
+        p_output_vat_account_id: taxEnabled ? settings.vatAccountId : null,
       });
       if (pErr) throw pErr;
 
@@ -257,11 +244,13 @@ export default function PosCheckout() {
                 {warehouses?.map((w) => <option key={w.id} value={w.id}>{w.code} · {w.name_ar}</option>)}
               </select>
             </div>
-            <div className="field grow">
-              <label>حساب ضريبة المخرجات</label>
-              <AccountSelect accounts={accounts} value={settings.vatAccountId} placeholder="—"
-                onChange={(v) => setSettings((s) => ({ ...s, vatAccountId: v }))} />
-            </div>
+            {taxEnabled && (
+              <div className="field grow">
+                <label>حساب ضريبة المخرجات</label>
+                <AccountSelect accounts={accounts} value={settings.vatAccountId} placeholder="—"
+                  onChange={(v) => setSettings((s) => ({ ...s, vatAccountId: v }))} />
+              </div>
+            )}
             <div className="field grow">
               <label>حساب المبيعات الافتراضي (لصنف بلا حساب خاص)</label>
               <AccountSelect accounts={accounts} value={settings.defaultSalesAccountId} placeholder="—"
@@ -341,8 +330,8 @@ export default function PosCheckout() {
           ))}
 
           <div style={{ marginTop: '0.75rem' }}>
-            <div className="row" style={{ justifyContent: 'space-between' }}><span className="muted">قبل الضريبة</span><span className="mono">{fmtMoney(totals.subtotal)}</span></div>
-            <div className="row" style={{ justifyContent: 'space-between' }}><span className="muted">ضريبة 16%</span><span className="mono">{fmtMoney(totals.vat)}</span></div>
+            {taxEnabled && <div className="row" style={{ justifyContent: 'space-between' }}><span className="muted">قبل الضريبة</span><span className="mono">{fmtMoney(totals.subtotal)}</span></div>}
+            {taxEnabled && <div className="row" style={{ justifyContent: 'space-between' }}><span className="muted">ضريبة {fmtPct(taxRate)}</span><span className="mono">{fmtMoney(totals.vat)}</span></div>}
             <div className="row" style={{ justifyContent: 'space-between', fontWeight: 700, fontSize: '1.1rem' }}><span>الإجمالي</span><span className="mono">{fmtMoney(totals.grand)}</span></div>
           </div>
 

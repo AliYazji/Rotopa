@@ -21,7 +21,7 @@ declare
   v_wh uuid; v_item uuid; v_cust uuid; v_supp uuid;
   v_purchase uuid; v_sale uuid; v_move_open uuid;
 begin
-  assert app.vat_rate() = 0.16, 'the flat rate should be 16%';
+  assert app.vat_rate(v_org) = 0.16, 'the default rate should be 16%';
 
   insert into accounts (org_id, code, name_ar, is_postable, nature) values (v_org,'PAR','أصول',false,'debit') returning id into v_parent;
   insert into accounts (org_id, code, name_ar, parent_id, is_postable, nature) values (v_org,'AR','ذمم عملاء',v_parent,true,'debit') returning id into v_ar;

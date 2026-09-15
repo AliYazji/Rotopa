@@ -66,8 +66,8 @@ export function PrintInvoice({
           ))}
         </tbody>
         <tfoot>
-          <tr><td colSpan={4}>المجموع قبل الضريبة</td><td>{fmtMoney(subtotal)}</td></tr>
-          <tr><td colSpan={4}>ضريبة القيمة المضافة</td><td>{fmtMoney(vat)}</td></tr>
+          {vat > 0 && <tr><td colSpan={4}>المجموع قبل الضريبة</td><td>{fmtMoney(subtotal)}</td></tr>}
+          {vat > 0 && <tr><td colSpan={4}>ضريبة القيمة المضافة</td><td>{fmtMoney(vat)}</td></tr>}
           <tr style={{ fontWeight: 700 }}><td colSpan={4}>الإجمالي</td><td>{fmtMoney(total)}</td></tr>
         </tfoot>
       </table>

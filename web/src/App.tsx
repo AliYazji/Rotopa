@@ -74,6 +74,10 @@ import AuditLog from './pages/AuditLog.tsx';
 import Settings from './pages/Settings.tsx';
 import ItemCategories from './pages/ItemCategories.tsx';
 import AccountCategories from './pages/AccountCategories.tsx';
+import ManufacturingOrders from './pages/ManufacturingOrders.tsx';
+import ManufacturingOrderNew from './pages/ManufacturingOrderNew.tsx';
+import ManufacturingOrderDetail from './pages/ManufacturingOrderDetail.tsx';
+import Warehouses from './pages/Warehouses.tsx';
 
 function Gate() {
   const { org, loading } = useOrg();
@@ -152,6 +156,10 @@ function Gate() {
         <Route path="/settings" element={<Settings />} />
         <Route path="/item-categories" element={<ItemCategories />} />
         <Route path="/account-categories" element={<AccountCategories />} />
+        <Route path="/manufacturing-orders" element={<ManufacturingOrders />} />
+        <Route path="/manufacturing-orders/new" element={<ManufacturingOrderNew />} />
+        <Route path="/manufacturing-orders/:id" element={<ManufacturingOrderDetail />} />
+        <Route path="/warehouses" element={<Warehouses />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Shell>

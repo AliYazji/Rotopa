@@ -3,10 +3,11 @@ import { useParams, Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase.ts';
 import { fmtDate, fmtMoney, translateError } from '../lib/format.ts';
+import { ItemPicker } from '../components/ItemPicker.tsx';
 
 interface Item {
   id: string; code: string; name_ar: string; name_en: string | null; base_unit_name: string;
-  sales_price: number; is_stock_tracked: boolean; barcode: string | null;
+  sales_price: number; is_stock_tracked: boolean; is_composite: boolean; barcode: string | null;
   category_id: string | null; inventory_account_id: string | null; cogs_account_id: string | null;
   min_stock: number | null; max_stock: number | null; is_active: boolean; notes: string | null;
 }
@@ -14,6 +15,7 @@ interface CatOpt { id: string; name_ar: string; }
 interface AccOpt { id: string; code: string; name_ar: string; }
 interface Balance { warehouse_id: string; warehouse: { code: string; name_ar: string }; qty: number; avg_cost: number; }
 interface UnitRow { id: string; unit_name: string; conversion_factor: number; is_sales_default: boolean; is_purchase_default: boolean; }
+interface BomRow { id: string; component_item_id: string; qty: number; component: { code: string; name_ar: string; base_unit_name: string } | null; }
 interface MoveLine {
   base_qty: number; direction: 'in' | 'out'; unit_cost: number;
   warehouse: { name_ar: string };
@@ -35,6 +37,10 @@ export default function ItemDetail() {
   const [newUnitName, setNewUnitName] = useState('');
   const [newUnitFactor, setNewUnitFactor] = useState('');
   const [unitErr, setUnitErr] = useState<string | null>(null);
+  const [newComponentId, setNewComponentId] = useState('');
+  const [newComponentLabel, setNewComponentLabel] = useState('');
+  const [newComponentQty, setNewComponentQty] = useState('');
+  const [bomErr, setBomErr] = useState<string | null>(null);
 
   const { data: item, isLoading } = useQuery({
     queryKey: ['item', id],
@@ -129,6 +135,57 @@ export default function ItemDetail() {
     await qc.invalidateQueries({ queryKey: ['item-units', id] });
   }
 
+  const { data: bom } = useQuery({
+    queryKey: ['item-bom', id],
+    enabled: !!id,
+    queryFn: async (): Promise<BomRow[]> => {
+      const { data, error } = await supabase.from('bom_lines')
+        .select('id, component_item_id, qty, component:component_item_id(code, name_ar, base_unit_name)')
+        .eq('finished_item_id', id);
+      if (error) throw error;
+      return data as unknown as BomRow[];
+    },
+  });
+
+  // "how many could be assembled right now" — only meaningful for a
+  // composite item; needs a warehouse, so just uses the first one available
+  // (a composite item has no warehouse of its own to scope this to)
+  const { data: firstWarehouseId } = useQuery({
+    queryKey: ['first-warehouse'],
+    enabled: !!item?.is_composite,
+    queryFn: async (): Promise<string | null> => {
+      const { data, error } = await supabase.from('warehouses').select('id').eq('is_active', true).order('code').limit(1);
+      if (error) throw error;
+      return data[0]?.id ?? null;
+    },
+  });
+  const { data: buildableQty } = useQuery({
+    queryKey: ['item-buildable-qty', id, firstWarehouseId],
+    enabled: !!id && !!firstWarehouseId,
+    queryFn: async (): Promise<number> => {
+      const { data, error } = await supabase.rpc('item_composite_buildable_qty', { p_item_id: id, p_warehouse_id: firstWarehouseId });
+      if (error) throw error;
+      return (data as number) ?? 0;
+    },
+  });
+
+  async function addBomLine() {
+    setBomErr(null);
+    const qty = parseFloat(newComponentQty);
+    if (!newComponentId) return setBomErr('اختر صنف المكوّن');
+    if (!(qty > 0)) return setBomErr('الكمية لازم تكون رقماً أكبر من صفر');
+    const { error } = await supabase.from('bom_lines').insert({ finished_item_id: id, component_item_id: newComponentId, qty });
+    if (error) return setBomErr(translateError(error.message));
+    setNewComponentId(''); setNewComponentLabel(''); setNewComponentQty('');
+    await qc.invalidateQueries({ queryKey: ['item-bom', id] });
+  }
+  async function deleteBomLine(lineId: string) {
+    setBomErr(null);
+    const { error } = await supabase.from('bom_lines').delete().eq('id', lineId);
+    if (error) return setBomErr(translateError(error.message));
+    await qc.invalidateQueries({ queryKey: ['item-bom', id] });
+  }
+
   const { data: history } = useQuery({
     queryKey: ['item-history', id],
     enabled: !!id,
@@ -148,14 +205,18 @@ export default function ItemDetail() {
       if (form.is_stock_tracked && (!form.inventory_account_id || !form.cogs_account_id)) {
         throw new Error('صنف يتتبّع المخزون يحتاج حساب مخزون وحساب تكلفة');
       }
+      if (form.is_composite && !form.cogs_account_id) {
+        throw new Error('صنف مركّب يحتاج حساب تكلفة (لتحميل تكلفة مكوّناته عند البيع)');
+      }
       const { error } = await supabase.from('items').update({
         name_ar: form.name_ar, name_en: form.name_en || null,
         category_id: form.category_id || null, base_unit_name: form.base_unit_name || 'قطعة',
         sales_price: form.sales_price ?? 0, barcode: form.barcode || null,
         min_stock: form.min_stock ?? null, max_stock: form.max_stock ?? null,
-        is_stock_tracked: form.is_stock_tracked,
-        inventory_account_id: form.is_stock_tracked ? form.inventory_account_id : null,
-        cogs_account_id: form.is_stock_tracked ? form.cogs_account_id : null,
+        is_stock_tracked: form.is_composite ? false : form.is_stock_tracked,
+        is_composite: form.is_composite ?? false,
+        inventory_account_id: form.is_stock_tracked && !form.is_composite ? form.inventory_account_id : null,
+        cogs_account_id: (form.is_stock_tracked || form.is_composite) ? form.cogs_account_id : null,
         is_active: form.is_active, notes: form.notes || null,
       }).eq('id', id);
       if (error) throw error;
@@ -190,7 +251,7 @@ export default function ItemDetail() {
                 <tr><td className="muted">الباركود</td><td className="mono">{item.barcode ?? '—'}</td></tr>
                 <tr><td className="muted">سعر البيع</td><td className="num">{fmtMoney(item.sales_price)}</td></tr>
                 <tr><td className="muted">حد أدنى/أقصى</td><td className="num">{item.min_stock ?? '—'} / {item.max_stock ?? '—'}</td></tr>
-                <tr><td className="muted">تتبّع المخزون</td><td>{item.is_stock_tracked ? 'نعم' : 'لا (صنف خدمي)'}</td></tr>
+                <tr><td className="muted">تتبّع المخزون</td><td>{item.is_composite ? 'مركّب (يُجمَّع عند البيع)' : item.is_stock_tracked ? 'نعم' : 'لا (صنف خدمي)'}</td></tr>
                 <tr><td className="muted">نشط</td><td>{item.is_active ? 'نعم' : 'لا'}</td></tr>
                 {item.notes && <tr><td className="muted">ملاحظات</td><td>{item.notes}</td></tr>}
               </tbody>
@@ -235,10 +296,17 @@ export default function ItemDetail() {
                 </div>
               </div>
               <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', margin: '0.5rem 0' }}>
-                <input type="checkbox" style={{ width: 'auto' }} checked={form.is_stock_tracked ?? true} onChange={(e) => setForm({ ...form, is_stock_tracked: e.target.checked })} />
-                يتتبّع المخزون
+                <input type="checkbox" style={{ width: 'auto' }} checked={form.is_composite ?? false}
+                  onChange={(e) => setForm({ ...form, is_composite: e.target.checked, is_stock_tracked: e.target.checked ? false : form.is_stock_tracked })} />
+                صنف مركّب (يُجمَّع من مكوّناته عند البيع — مثل محقن بوظة، بلا مخزون خاص به)
               </label>
-              {form.is_stock_tracked && (
+              {!form.is_composite && (
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', margin: '0.5rem 0' }}>
+                  <input type="checkbox" style={{ width: 'auto' }} checked={form.is_stock_tracked ?? true} onChange={(e) => setForm({ ...form, is_stock_tracked: e.target.checked })} />
+                  يتتبّع المخزون
+                </label>
+              )}
+              {form.is_stock_tracked && !form.is_composite && (
                 <div className="row">
                   <div className="field grow">
                     <label>حساب المخزون</label>
@@ -254,6 +322,15 @@ export default function ItemDetail() {
                       {accounts?.map((a) => <option key={a.id} value={a.id}>{a.code} · {a.name_ar}</option>)}
                     </select>
                   </div>
+                </div>
+              )}
+              {form.is_composite && (
+                <div className="field">
+                  <label>حساب تكلفة البضاعة (لتحميل تكلفة المكوّنات عند البيع)</label>
+                  <select value={form.cogs_account_id ?? ''} onChange={(e) => setForm({ ...form, cogs_account_id: e.target.value })}>
+                    <option value="">—</option>
+                    {accounts?.map((a) => <option key={a.id} value={a.id}>{a.code} · {a.name_ar}</option>)}
+                  </select>
                 </div>
               )}
               <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', margin: '0.5rem 0' }}>
@@ -272,17 +349,28 @@ export default function ItemDetail() {
             </>
           )}
         </div>
-        {item.is_stock_tracked && !editing && (
+        {(item.is_stock_tracked || item.is_composite) && !editing && (
           <div className="card" style={{ flex: '1 1 200px', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }}>
-            <div className="muted" style={{ fontSize: '0.85rem' }}>الرصيد الحالي</div>
-            <div style={{ fontSize: '1.8rem', fontWeight: 700, fontFamily: 'var(--mono)' }}>{fmtMoney(totalQty)}</div>
-            <div className="muted" style={{ fontSize: '0.85rem' }}>{item.base_unit_name}</div>
+            {item.is_composite ? (
+              <>
+                <div className="muted" style={{ fontSize: '0.85rem' }}>يمكن تجميع الآن (حسب مخزون المكوّنات)</div>
+                <div style={{ fontSize: '1.8rem', fontWeight: 700, fontFamily: 'var(--mono)' }}>{fmtMoney(buildableQty ?? 0)}</div>
+              </>
+            ) : (
+              <>
+                <div className="muted" style={{ fontSize: '0.85rem' }}>الرصيد الحالي</div>
+                <div style={{ fontSize: '1.8rem', fontWeight: 700, fontFamily: 'var(--mono)' }}>{fmtMoney(totalQty)}</div>
+                <div className="muted" style={{ fontSize: '0.85rem' }}>{item.base_unit_name}</div>
+              </>
+            )}
           </div>
         )}
       </div>
 
-      {item.is_stock_tracked && !editing && (
+      {(item.is_stock_tracked || item.is_composite) && !editing && (
         <>
+          {item.is_stock_tracked && (
+          <>
           <h2>الرصيد حسب المستودع</h2>
           <div className="card" style={{ padding: 0, overflowX: 'auto', marginBottom: '1.25rem' }}>
             <table>
@@ -353,6 +441,42 @@ export default function ItemDetail() {
               </tbody>
             </table>
             {unitErr && <p className="error" style={{ padding: '0 0.5rem 0.5rem' }}>{unitErr}</p>}
+          </div>
+          </>
+          )}
+
+          <h2>وصفة التصنيع (BOM)</h2>
+          {item.is_composite && (
+            <p className="muted" style={{ marginTop: 0, fontSize: '0.85rem' }}>
+              صنف مركّب — يُستهلَك من هذه المكوّنات مباشرة عند بيعه (فاتورة مبيعات أو الكاشير)، بلا مخزون خاص به.
+            </p>
+          )}
+          <p className="muted" style={{ marginTop: 0, fontSize: '0.85rem' }}>
+            المكوّنات اللازمة لتصنيع وحدة واحدة من هذا الصنف — تُستخدَم تلقائياً عند إنشاء أمر تصنيع
+            له (يمكن تعديل الكميات لأمر معيّن دون التأثير على الوصفة نفسها).
+          </p>
+          <div className="card" style={{ padding: 0, overflowX: 'auto', marginBottom: '1.25rem' }}>
+            <table>
+              <thead>
+                <tr><th>المكوّن</th><th className="num" style={{ width: 140 }}>الكمية اللازمة</th><th style={{ width: 40 }} /></tr>
+              </thead>
+              <tbody>
+                {bom?.map((b) => (
+                  <tr key={b.id}>
+                    <td>{b.component?.code} · {b.component?.name_ar}</td>
+                    <td className="num">{fmtMoney(b.qty)} {b.component?.base_unit_name}</td>
+                    <td><button type="button" onClick={() => deleteBomLine(b.id)}>×</button></td>
+                  </tr>
+                ))}
+                {(!bom || bom.length === 0) && <tr><td colSpan={3} className="muted">ما في وصفة تصنيع لهذا الصنف بعد.</td></tr>}
+                <tr>
+                  <td><ItemPicker initialLabel={newComponentLabel} onPick={(it) => { setNewComponentId(it.id); setNewComponentLabel(`${it.code} · ${it.name_ar}`); }} /></td>
+                  <td><input className="num" inputMode="decimal" value={newComponentQty} onChange={(e) => setNewComponentQty(e.target.value)} placeholder="1" /></td>
+                  <td><button type="button" className="btn-primary" onClick={addBomLine}>+</button></td>
+                </tr>
+              </tbody>
+            </table>
+            {bomErr && <p className="error" style={{ padding: '0 0.5rem 0.5rem' }}>{bomErr}</p>}
           </div>
 
           <h2>حركة المخزون</h2>
