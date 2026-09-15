@@ -71,6 +71,7 @@ import Team from './pages/Team.tsx';
 import Roles from './pages/Roles.tsx';
 import Periods from './pages/Periods.tsx';
 import AuditLog from './pages/AuditLog.tsx';
+import Settings from './pages/Settings.tsx';
 
 function Gate() {
   const { org, loading } = useOrg();
@@ -146,6 +147,7 @@ function Gate() {
         <Route path="/roles" element={<Roles />} />
         <Route path="/periods" element={<Periods />} />
         <Route path="/audit-log" element={<AuditLog />} />
+        <Route path="/settings" element={<Settings />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Shell>

@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase.ts';
 import { useOrg } from '../lib/org.tsx';
 import { VAT_RATE, fmtDate, fmtMoney, today, translateError } from '../lib/format.ts';
 import { ItemPicker, type ItemUnitOpt } from '../components/ItemPicker.tsx';
+import { PrintInvoice } from '../components/PrintInvoice.tsx';
 
 interface Invoice {
   id: string; invoice_no: number; invoice_date: string; due_date: string; status: 'draft' | 'posted' | 'void';
@@ -211,9 +212,26 @@ export default function SalesInvoiceDetail() {
 
   return (
     <>
+      {invoice.status === 'posted' && (
+        <PrintInvoice
+          docTitle="فاتورة مبيعات" docNo={invoice.invoice_no} docDate={invoice.invoice_date}
+          dueDate={invoice.payment_method === 'credit' ? invoice.due_date : null}
+          partyLabel="العميل" partyName={invoice.dealer?.name_ar ?? ''}
+          lines={(lines ?? []).map((l) => ({
+            key: l.id, label: `${l.item?.code} · ${l.item?.name_ar}`, qty: l.qty,
+            unitLabel: l.unit?.unit_name ?? l.item?.base_unit_name ?? '', unitPrice: l.unit_price,
+            discountPct: l.discount_pct, total: l.line_total,
+          }))}
+          subtotal={total} vat={total * VAT_RATE} total={total * (1 + VAT_RATE)}
+        />
+      )}
+      <div className="no-print">
       <div className="row" style={{ justifyContent: 'space-between' }}>
         <h1>فاتورة مبيعات رقم {invoice.invoice_no}</h1>
-        <span className={`badge ${invoice.status}`}>{STATUS[invoice.status]}</span>
+        <div className="row">
+          {invoice.status === 'posted' && <button onClick={() => window.print()}>طباعة</button>}
+          <span className={`badge ${invoice.status}`}>{STATUS[invoice.status]}</span>
+        </div>
       </div>
 
       {invoice.status === 'draft' && !editing && (
@@ -428,6 +446,7 @@ export default function SalesInvoiceDetail() {
         </div>
       )}
       <p style={{ marginTop: '1rem' }}><Link to="/sales-invoices">‹ رجوع لقائمة الفواتير</Link></p>
+      </div>
     </>
   );
 }

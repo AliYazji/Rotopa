@@ -1,7 +1,9 @@
 import { Fragment, useEffect, useState, type ReactNode } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../lib/auth.tsx';
 import { useOrg } from '../lib/org.tsx';
+import { supabase } from '../lib/supabase.ts';
 
 // Grouped by BUSINESS PROCESS (a full sales cycle together, a full purchase
 // cycle together), not by document type or by "which party" — matching how
@@ -86,15 +88,38 @@ const nav: { section: string | null; items: { to: string; label: string }[] }[] 
       { to: '/roles', label: 'الأدوار والصلاحيات' },
       { to: '/periods', label: 'الفترات المحاسبية' },
       { to: '/audit-log', label: 'سجل التدقيق' },
+      { to: '/settings', label: 'إعدادات المؤسسة' },
     ],
   },
 ];
+
+// A minimal "things waiting on someone" indicator — deliberately NOT a real
+// notification system (no persistence, no dismissing, no realtime push):
+// it just surfaces the same worklist counts the dashboard already computes
+// in dashboard_summary(), as a badge that gets your attention before you'd
+// otherwise navigate to "/" and see them anyway.
+function usePendingCount(orgId: string | undefined) {
+  const { data } = useQuery({
+    queryKey: ['shell-pending-count', orgId],
+    enabled: !!orgId,
+    refetchInterval: 60_000,
+    queryFn: async (): Promise<number> => {
+      const { data, error } = await supabase.rpc('dashboard_summary', { p_org: orgId });
+      if (error) throw error;
+      const s = data?.[0];
+      if (!s) return 0;
+      return s.draft_sales_invoices + s.draft_purchase_invoices + s.open_sales_orders + s.open_purchase_orders + s.pending_invitations;
+    },
+  });
+  return data ?? 0;
+}
 
 export function Shell({ children }: { children: ReactNode }) {
   const { signOut, signOutEverywhere } = useAuth();
   const { org } = useOrg();
   const [open, setOpen] = useState(false);
   const location = useLocation();
+  const pending = usePendingCount(org?.id);
 
   // close the mobile drawer whenever the route changes
   useEffect(() => { setOpen(false); }, [location.pathname]);
@@ -104,6 +129,11 @@ export function Shell({ children }: { children: ReactNode }) {
       <div className="topbar">
         <button onClick={() => setOpen(true)} aria-label="القائمة" className="menu-btn">☰</button>
         <div className="brand">روتوبا</div>
+        {pending > 0 && (
+          <NavLink to="/" className="badge void" style={{ marginInlineStart: 'auto', textDecoration: 'none' }}>
+            {pending} بانتظار الإجراء
+          </NavLink>
+        )}
       </div>
       {open && <div className="backdrop" onClick={() => setOpen(false)} />}
       <aside className={`side${open ? ' open' : ''}`}>
@@ -116,7 +146,10 @@ export function Shell({ children }: { children: ReactNode }) {
             {group.section && <div className="section-label">{group.section}</div>}
             {group.items.map((n) => (
               <NavLink key={n.to} to={n.to} end={n.to === '/'} className={({ isActive }) => (isActive ? 'active' : '')}>
-                {n.label}
+                <span className="row" style={{ justifyContent: 'space-between', gap: '0.4rem' }}>
+                  {n.label}
+                  {n.to === '/' && pending > 0 && <span className="badge void">{pending}</span>}
+                </span>
               </NavLink>
             ))}
           </Fragment>

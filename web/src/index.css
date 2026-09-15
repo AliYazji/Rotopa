@@ -106,6 +106,23 @@ tr.rowlink { cursor: pointer; }
 .main { padding: 1.5rem 2rem; }
 .side .spacer { flex: 1; }
 
+/* print: only .print-only is visible when printing; the app chrome (nav,
+   forms, buttons) and everything else stays screen-only */
+.print-only { display: none; }
+@media print {
+  .no-print { display: none !important; }
+  .print-only { display: block !important; }
+  .shell { display: block; }
+  .main { padding: 0; }
+  body { background: #fff; }
+}
+.print-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1.5rem; }
+.print-header h1 { font-size: 1.3rem; margin: 0 0 0.25rem; }
+.print-table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+.print-table th, .print-table td { border: 1px solid #999; padding: 0.4rem 0.6rem; text-align: right; }
+.print-table th { background: #f0f0f0; }
+.print-footer-note { margin-top: 2rem; padding-top: 0.75rem; border-top: 1px solid #999; font-size: 0.85rem; color: #444; }
+
 /* mobile: hidden until toggled, off the top bar's hamburger button */
 .topbar { display: none; }
 .side-close { display: none; }

@@ -43,6 +43,34 @@ jobs:
           PGURL: postgres://postgres:postgres@localhost:5432/rotopa
         run: bash supabase/tests/run.sh
 
+      - name: Bulk-posting performance smoke check (regression tripwire, not a benchmark)
+        run: psql "postgres://postgres:postgres@localhost:5432/rotopa" -v ON_ERROR_STOP=1 < supabase/tests/performance/bulk-posting.sql
+
+  concurrency-test:
+    name: Concurrency — stock oversell guard under real parallel access
+    runs-on: ubuntu-latest
+    services:
+      # same image + same POSTGRES_DB rationale as sql-tests above
+      postgres:
+        image: public.ecr.aws/supabase/postgres:15.6.1.139
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install postgresql-client
+        run: sudo apt-get update && sudo apt-get install --yes postgresql-client
+      - name: Run two genuinely concurrent sell attempts against limited stock
+        env:
+          PGURL: postgres://postgres:postgres@localhost:5432/postgres
+        run: bash supabase/tests/concurrency/run.sh
+
   web:
     name: Web app — typecheck + build
     runs-on: ubuntu-latest

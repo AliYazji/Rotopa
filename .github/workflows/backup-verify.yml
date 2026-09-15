@@ -1,0 +1,74 @@
+name: Backup/restore verification
+
+# An infrequent, ops-focused check (not a per-commit gate like ci.yml):
+# proves the backup/restore round trip in scripts/{backup,restore}-db.sh
+# actually produces a fully working database, not just that pg_dump exits
+# 0. Runs the whole SQL test suite against the RESTORED copy — the
+# strongest verification available, since it exercises every RPC,
+# permission check, and trigger, not just a row count.
+on:
+  schedule:
+    - cron: '0 3 * * 1'   # every Monday 03:00 UTC
+  workflow_dispatch:
+
+jobs:
+  backup-restore:
+    name: Backup, restore into a fresh DB, re-run the full test suite
+    runs-on: ubuntu-latest
+    services:
+      # same image as ci.yml's sql-tests job and every local dev container
+      # this project uses — see that job's own comment for why POSTGRES_DB
+      # is deliberately not set here.
+      postgres:
+        image: public.ecr.aws/supabase/postgres:15.6.1.139
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install postgresql-client (pg_dump/pg_restore for the PGURL code path)
+        run: sudo apt-get update && sudo apt-get install --yes postgresql-client
+
+      - name: Create the source and restore-target databases
+        run: |
+          psql "postgres://postgres:postgres@localhost:5432/postgres" -c "create database rotopa_source;"
+          psql "postgres://postgres:postgres@localhost:5432/postgres" -c "create database rotopa_restored;"
+
+      - name: Apply migrations to both databases
+        run: |
+          for db in rotopa_source rotopa_restored; do
+            for f in supabase/tests/00_shim.sql supabase/migrations/*.sql; do
+              psql "postgres://postgres:postgres@localhost:5432/$db" -v ON_ERROR_STOP=1 -q < "$f"
+            done
+          done
+
+      - name: Back up rotopa_source
+        env:
+          PGURL: postgres://postgres:postgres@localhost:5432/rotopa_source
+        run: bash scripts/backup-db.sh
+
+      - name: Restore the backup onto rotopa_restored
+        env:
+          PGURL: postgres://postgres:postgres@localhost:5432/rotopa_restored
+          PGDATABASE: rotopa_restored
+        run: |
+          LATEST=$(ls -1t backups/rotopa_backup_*.dump | head -1)
+          echo "rotopa_restored" | bash scripts/restore-db.sh "$LATEST"
+
+      - name: Run the full test suite against the RESTORED database
+        # NOT supabase/tests/run.sh — it always re-applies every migration
+        # first (by design: docs/deployment.md is explicit it only ever
+        # targets "a clean database"), which would fail here since
+        # rotopa_restored already has the full schema from the restore.
+        # run-tests-only.sh just runs the test files as-is — same script
+        # the emergency-recovery runbook in docs/deployment.md points at.
+        env:
+          PGURL: postgres://postgres:postgres@localhost:5432/rotopa_restored
+        run: bash supabase/tests/run-tests-only.sh
