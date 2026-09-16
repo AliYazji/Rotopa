@@ -119,6 +119,18 @@ const ERROR_PATTERNS: [RegExp, (m: RegExpMatchArray) => string][] = [
   [/pending invitation not found/, () => 'الدعوة غير موجودة — ربما أُلغيت أو قُبلت بالفعل.'],
   [/membership not found/, () => 'العضوية غير موجودة.'],
   [/email is required/, () => 'أدخل البريد الإلكتروني.'],
+
+  [/this cash drawer already has an open shift/, () => 'هذا الصندوق فيه وردية مفتوحة بالفعل.'],
+  [/account \S+ is a group account and cannot be used as a cash drawer/, () => 'هذا حساب تجميع (أب) — اختر حساب صندوق قابل للترحيل.'],
+  [/cashier must be an employee dealer in this organization/, () => 'الكاشير لازم يكون طرفاً مسجّلاً بصفة "موظف".'],
+  [/cash account not found in this organization/, () => 'حساب الصندوق غير موجود بهذه المؤسسة.'],
+  [/shift not found/, () => 'الوردية غير موجودة.'],
+  [/only an open shift can be closed \(this one is (\w+)\)/, () => 'هذه الوردية مغلقة بالفعل.'],
+  [/a variance account is required — counted cash does not match the expected amount \(variance (-?[\d.]+)\)/,
+    (m) => `الجرد ما بيطابق المتوقّع (الفرق ${fmtMoney(Math.abs(Number(m[1])))}) — حدد حساب العجز أو الزيادة لترحيله.`],
+  [/variance account belongs to a different organization/, () => 'حساب فرق الجرد لا ينتمي لهذه المؤسسة.'],
+  [/cash shift not found, not open, or belongs to a different organization/, () => 'الوردية المختارة غير موجودة أو مغلقة.'],
+  [/a closed cash shift cannot be modified/, () => 'هذه الوردية مغلقة — لا يمكن تعديلها.'],
 ];
 export function translateError(message: string): string {
   for (const [re, fn] of ERROR_PATTERNS) {

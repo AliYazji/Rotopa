@@ -9,10 +9,10 @@ interface PrintLine {
 }
 
 export function PrintInvoice({
-  docTitle, docNo, docDate, dueDate, partyLabel, partyName, lines, subtotal, vat, total,
+  docTitle, docNo, docDate, dueDate, partyLabel, partyName, cashierName, lines, subtotal, vat, total,
 }: {
   docTitle: string; docNo: number; docDate: string; dueDate?: string | null;
-  partyLabel: string; partyName: string; lines: PrintLine[];
+  partyLabel: string; partyName: string; cashierName?: string | null; lines: PrintLine[];
   subtotal: number; vat: number; total: number;
 }) {
   const { org } = useOrg();
@@ -43,6 +43,7 @@ export function PrintInvoice({
       </div>
 
       <div><strong>{partyLabel}:</strong> {partyName}</div>
+      {cashierName && <div><strong>الكاشير:</strong> {cashierName}</div>}
 
       <table className="print-table">
         <thead>

@@ -25,26 +25,29 @@ begin
   insert into account_categories (org_id, code, name_ar, statement, section, normal_balance)
   values (v_org, 'REV', 'إيرادات', 'income_statement', 'income', 'credit') returning id into v_cat_income;
 
+  -- codes prefixed Z: create_organization() now seeds a real default chart
+  -- of accounts (20250911003800) using plain 10000-65999 numeric codes, so
+  -- this test's own scratch chart needs codes that can't collide with it
   insert into accounts (org_id, code, name_ar, is_postable, nature)
-  values (v_org, '10000', 'الأصول المتداولة', false, 'debit') returning id into v_parent_assets;
+  values (v_org, 'Z1000', 'الأصول المتداولة', false, 'debit') returning id into v_parent_assets;
   insert into accounts (org_id, code, name_ar, is_postable, nature)
-  values (v_org, '40000', 'الإيرادات', false, 'credit') returning id into v_parent_income;
+  values (v_org, 'Z4000', 'الإيرادات', false, 'credit') returning id into v_parent_income;
 
   insert into accounts (org_id, code, name_ar, parent_id, category_id, is_postable, nature)
-  values (v_org, '10101', 'الصندوق', v_parent_assets, v_cat_asset, true, 'debit') returning id into v_cash;
+  values (v_org, 'Z1010', 'الصندوق', v_parent_assets, v_cat_asset, true, 'debit') returning id into v_cash;
   insert into accounts (org_id, code, name_ar, parent_id, category_id, is_postable, nature)
-  values (v_org, '10201', 'ذمم العملاء', v_parent_assets, v_cat_asset, true, 'debit') returning id into v_ar;
+  values (v_org, 'Z1020', 'ذمم العملاء', v_parent_assets, v_cat_asset, true, 'debit') returning id into v_ar;
   insert into accounts (org_id, code, name_ar, parent_id, category_id, is_postable, nature)
-  values (v_org, '40101', 'مبيعات', v_parent_income, v_cat_income, true, 'credit') returning id into v_sales;
+  values (v_org, 'Z4010', 'مبيعات', v_parent_income, v_cat_income, true, 'credit') returning id into v_sales;
 
   -- tree upkeep
   assert (select depth from accounts where id = v_cash) = 1, 'cash depth should be 1';
-  assert (select path::text from accounts where id = v_cash) = '10000.10101', 'cash path wrong';
+  assert (select path::text from accounts where id = v_cash) = 'Z1000.Z1010', 'cash path wrong';
 
   -- 3. can't add a child under a postable account
   begin
     insert into accounts (org_id, code, name_ar, parent_id, is_postable)
-    values (v_org, '10101999', 'child of leaf', v_cash, true);
+    values (v_org, 'Z1010999', 'child of leaf', v_cash, true);
     raise exception 'TEST FAIL: allowed child under postable account';
   exception when sqlstate '23514' then null;
   end;

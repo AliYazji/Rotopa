@@ -78,6 +78,8 @@ import ManufacturingOrders from './pages/ManufacturingOrders.tsx';
 import ManufacturingOrderNew from './pages/ManufacturingOrderNew.tsx';
 import ManufacturingOrderDetail from './pages/ManufacturingOrderDetail.tsx';
 import Warehouses from './pages/Warehouses.tsx';
+import CashShifts from './pages/CashShifts.tsx';
+import CashShiftDetail from './pages/CashShiftDetail.tsx';
 
 function Gate() {
   const { org, loading } = useOrg();
@@ -160,6 +162,8 @@ function Gate() {
         <Route path="/manufacturing-orders/new" element={<ManufacturingOrderNew />} />
         <Route path="/manufacturing-orders/:id" element={<ManufacturingOrderDetail />} />
         <Route path="/warehouses" element={<Warehouses />} />
+        <Route path="/cash-shifts" element={<CashShifts />} />
+        <Route path="/cash-shifts/:id" element={<CashShiftDetail />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Shell>

@@ -12,6 +12,7 @@ interface Invoice {
   payment_method: 'credit' | 'cash'; cash_account_id: string | null; description: string;
   dealer_id: string; warehouse_id: string;
   dealer: { name_ar: string } | null; void_reason: string | null;
+  cash_shift: { cashier: { name_ar: string } | null } | null;
 }
 interface Line {
   id: string; line_no: number; item_id: string; qty: number; unit_price: number; discount_pct: number; line_total: number; unit_cost: number | null;
@@ -62,7 +63,7 @@ export default function SalesInvoiceDetail() {
     enabled: !!id,
     queryFn: async (): Promise<Invoice> => {
       const { data, error } = await supabase.from('sales_invoices')
-        .select('id, invoice_no, invoice_date, due_date, status, payment_method, cash_account_id, description, dealer_id, warehouse_id, void_reason, dealer:dealer_id(name_ar)')
+        .select('id, invoice_no, invoice_date, due_date, status, payment_method, cash_account_id, description, dealer_id, warehouse_id, void_reason, dealer:dealer_id(name_ar), cash_shift:cash_shift_id(cashier:cashier_dealer_id(name_ar))')
         .eq('id', id).single();
       if (error) throw error;
       return data as unknown as Invoice;
@@ -226,6 +227,7 @@ export default function SalesInvoiceDetail() {
           docTitle="فاتورة مبيعات" docNo={invoice.invoice_no} docDate={invoice.invoice_date}
           dueDate={invoice.payment_method === 'credit' ? invoice.due_date : null}
           partyLabel="العميل" partyName={invoice.dealer?.name_ar ?? ''}
+          cashierName={invoice.cash_shift?.cashier?.name_ar}
           lines={(lines ?? []).map((l) => ({
             key: l.id, label: `${l.item?.code} · ${l.item?.name_ar}`, qty: l.qty,
             unitLabel: l.unit?.unit_name ?? l.item?.base_unit_name ?? '', unitPrice: l.unit_price,

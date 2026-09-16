@@ -15,8 +15,11 @@ declare
   v_d1 uuid; v_d2 uuid;
   v_acc1 uuid; v_acc2 uuid;
 begin
+  -- Z-prefixed: create_organization() now seeds a real default chart of
+  -- accounts (20250911003800) using plain 10000-65999 numeric codes, so
+  -- this test's own scratch header needs a code that can't collide with it
   insert into accounts (org_id, code, name_ar, is_postable, nature)
-  values (v_org, '11200', 'العملاء', false, 'debit') returning id into v_customers;
+  values (v_org, 'Z1120', 'العملاء', false, 'debit') returning id into v_customers;
 
   v_d1 := create_dealer(v_org, 'عميل أول', v_customers, p_is_customer := true, p_phone := '0599000001');
   v_d2 := create_dealer(v_org, 'عميل ثاني', v_customers, p_is_customer := true, p_phone := '0599000002');
@@ -28,8 +31,8 @@ begin
   assert v_acc1 <> v_acc2, 'each dealer must get its own account';
   assert (select parent_id from accounts where id = v_acc1) = v_customers, 'account should be under the chosen header';
   assert (select is_postable from accounts where id = v_acc1), 'the new account must be postable';
-  assert (select code from accounts where id = v_acc1) = '1120001', 'first child code should be 1120001';
-  assert (select code from accounts where id = v_acc2) = '1120002', 'second child code should be 1120002';
+  assert (select code from accounts where id = v_acc1) = 'Z112001', 'first child code should be Z112001';
+  assert (select code from accounts where id = v_acc2) = 'Z112002', 'second child code should be Z112002';
 
   -- trying to attach a dealer under a postable account must fail
   begin

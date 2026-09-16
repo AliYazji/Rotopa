@@ -31,6 +31,11 @@ interface OrgState {
    * each field is '' when unset. */
   defaultAccounts: DefaultAccounts;
   refetchDefaultAccounts: () => void;
+  /** the org's chosen subset of cash accounts for the POS cash-register
+   * picker (settings > صناديق الكاشير) — empty means "not curated yet",
+   * so callers should fall back to showing every postable account */
+  posRegisterIds: string[];
+  refetchPosRegisters: () => void;
 }
 
 const DEFAULT_TAX: TaxSettings = { enabled: true, rate: 0.16 };
@@ -40,6 +45,7 @@ const Ctx = createContext<OrgState>({
   org: null, loading: true, refetch: () => {},
   taxRate: DEFAULT_TAX.rate, taxEnabled: DEFAULT_TAX.enabled, refetchTax: () => {},
   defaultAccounts: EMPTY_DEFAULT_ACCOUNTS, refetchDefaultAccounts: () => {},
+  posRegisterIds: [], refetchPosRegisters: () => {},
 });
 
 export function OrgProvider({ children }: { children: ReactNode }) {
@@ -87,10 +93,22 @@ export function OrgProvider({ children }: { children: ReactNode }) {
     },
   });
 
+  const { data: posRegisterIds, refetch: refetchPosRegisters } = useQuery({
+    queryKey: ['org-pos-registers', org?.id],
+    enabled: !!org,
+    queryFn: async (): Promise<string[]> => {
+      const { data, error } = await supabase.from('org_settings').select('value').eq('org_id', org!.id).eq('key', 'pos_registers').maybeSingle();
+      if (error) throw error;
+      const v = (data?.value ?? {}) as { account_ids?: string[] };
+      return v.account_ids ?? [];
+    },
+  });
+
   return (
     <Ctx.Provider value={{
       org, loading: isLoading, refetch, taxRate, taxEnabled, refetchTax: () => refetchTax(),
       defaultAccounts: defaultAccountsRow ?? EMPTY_DEFAULT_ACCOUNTS, refetchDefaultAccounts: () => refetchDefaultAccounts(),
+      posRegisterIds: posRegisterIds ?? [], refetchPosRegisters: () => refetchPosRegisters(),
     }}>{children}</Ctx.Provider>
   );
 }

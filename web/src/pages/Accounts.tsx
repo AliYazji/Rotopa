@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase.ts';
 import { useOrg } from '../lib/org.tsx';
+import { fmtMoney } from '../lib/format.ts';
 
 interface Acc {
   id: string;
@@ -14,6 +15,7 @@ interface Acc {
   nature: string;
   path: string;
 }
+interface BalanceRow { account_id: string; balance: number; }
 
 const NATURE: Record<string, string> = { debit: 'مدين', credit: 'دائن', both: 'مدين/دائن' };
 
@@ -31,6 +33,17 @@ export default function Accounts() {
         .order('path');
       if (error) throw error;
       return data as Acc[];
+    },
+  });
+  // group accounts show the rolled-up total of every postable account
+  // under them, not just their own (always-zero) direct balance
+  const { data: balances } = useQuery({
+    queryKey: ['chart-of-accounts-balances', org?.id],
+    enabled: !!org,
+    queryFn: async (): Promise<Map<string, number>> => {
+      const { data, error } = await supabase.rpc('chart_of_accounts_balances', { p_org: org!.id });
+      if (error) throw error;
+      return new Map((data as BalanceRow[]).map((r) => [r.account_id, Number(r.balance)]));
     },
   });
 
@@ -58,22 +71,29 @@ export default function Accounts() {
               <th>الاسم</th>
               <th style={{ width: 90 }}>الطبيعة</th>
               <th style={{ width: 80 }}>النوع</th>
+              <th className="num" style={{ width: 130 }}>الرصيد</th>
             </tr>
           </thead>
           <tbody>
-            {isLoading && <tr><td colSpan={4} className="muted">جارٍ التحميل…</td></tr>}
-            {rows.map((a) => (
-              <tr key={a.id} className="rowlink" onClick={() => nav(`/accounts/${a.id}`)}>
-                <td className="mono">{a.code}</td>
-                <td style={{ paddingInlineStart: `${(q ? 0 : a.depth) * 1.4 + 0.7}rem` }}>
-                  {a.is_postable ? a.name_ar : <strong>{a.name_ar}</strong>}
-                </td>
-                <td className="muted">{NATURE[a.nature]}</td>
-                <td>
-                  <span className="badge">{a.is_postable ? 'ترحيل' : 'تجميع'}</span>
-                </td>
-              </tr>
-            ))}
+            {isLoading && <tr><td colSpan={5} className="muted">جارٍ التحميل…</td></tr>}
+            {rows.map((a) => {
+              const bal = balances?.get(a.id) ?? 0;
+              return (
+                <tr key={a.id} className="rowlink" onClick={() => nav(`/accounts/${a.id}`)}>
+                  <td className="mono">{a.code}</td>
+                  <td style={{ paddingInlineStart: `${(q ? 0 : a.depth) * 1.4 + 0.7}rem` }}>
+                    {a.is_postable ? a.name_ar : <strong>{a.name_ar}</strong>}
+                  </td>
+                  <td className="muted">{NATURE[a.nature]}</td>
+                  <td>
+                    <span className="badge">{a.is_postable ? 'ترحيل' : 'تجميع'}</span>
+                  </td>
+                  <td className="num mono" style={{ color: bal === 0 ? undefined : bal > 0 ? 'var(--debit)' : 'var(--credit)' }}>
+                    {fmtMoney(Math.abs(bal))}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

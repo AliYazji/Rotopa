@@ -12,8 +12,10 @@ interface DefaultAccountsRow { sales_account_id: string | null; output_vat_accou
 
 const MONTHS = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
 
+const UNCATEGORIZED = 'غير مصنّف';
+
 export default function Settings() {
-  const { org, refetch, refetchTax, refetchDefaultAccounts } = useOrg();
+  const { org, refetch, refetchTax, refetchDefaultAccounts, refetchPosRegisters } = useOrg();
   const qc = useQueryClient();
   const [nameAr, setNameAr] = useState('');
   const [address, setAddress] = useState('');
@@ -25,6 +27,7 @@ export default function Settings() {
   const [defOutputVatAccountId, setDefOutputVatAccountId] = useState('');
   const [defInputVatAccountId, setDefInputVatAccountId] = useState('');
   const [defCashAccountId, setDefCashAccountId] = useState('');
+  const [posRegisters, setPosRegisters] = useState<Set<string>>(new Set());
   const [err, setErr] = useState<string | null>(null);
   const [savedMsg, setSavedMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -81,6 +84,17 @@ export default function Settings() {
     },
   });
 
+  const { data: posRegistersRow } = useQuery({
+    queryKey: ['org-pos-registers-page', org?.id],
+    enabled: !!org,
+    queryFn: async (): Promise<string[]> => {
+      const { data, error } = await supabase.from('org_settings').select('value').eq('org_id', org!.id).eq('key', 'pos_registers').maybeSingle();
+      if (error) throw error;
+      const v = (data?.value ?? {}) as { account_ids?: string[] };
+      return v.account_ids ?? [];
+    },
+  });
+
   useEffect(() => { if (orgRow) setNameAr(orgRow.name_ar); }, [orgRow]);
   useEffect(() => {
     if (printSettings) {
@@ -103,6 +117,7 @@ export default function Settings() {
       setDefCashAccountId(defaultAccountsRow.cash_account_id ?? '');
     }
   }, [defaultAccountsRow]);
+  useEffect(() => { if (posRegistersRow) setPosRegisters(new Set(posRegistersRow)); }, [posRegistersRow]);
 
   async function saveOrgName() {
     setErr(null); setSavedMsg(null); setBusy(true);
@@ -155,6 +170,26 @@ export default function Settings() {
     setSavedMsg('تم الحفظ');
     qc.invalidateQueries({ queryKey: ['org-default-accounts-page', org?.id] });
     refetchDefaultAccounts();
+  }
+
+  function toggleRegister(id: string) {
+    setPosRegisters((s) => {
+      const next = new Set(s);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  async function savePosRegisters() {
+    setErr(null); setSavedMsg(null); setBusy(true);
+    const { error } = await supabase.from('org_settings').upsert({
+      org_id: org!.id, key: 'pos_registers', value: { account_ids: [...posRegisters] },
+    });
+    setBusy(false);
+    if (error) return setErr(translateError(error.message));
+    setSavedMsg('تم الحفظ');
+    qc.invalidateQueries({ queryKey: ['org-pos-registers-page', org?.id] });
+    refetchPosRegisters();
   }
 
   return (
@@ -237,6 +272,34 @@ export default function Settings() {
           <AccountSelect accounts={accounts} value={defCashAccountId} placeholder="—" onChange={setDefCashAccountId} />
         </div>
         <button className="btn-primary" disabled={busy} onClick={saveDefaultAccounts}>حفظ</button>
+      </div>
+
+      <div className="card" style={{ maxWidth: 480, marginTop: '1rem' }}>
+        <h2>صناديق الكاشير</h2>
+        <p className="muted" style={{ fontSize: '0.85rem', marginTop: 0 }}>
+          حدد الحسابات يلي فعلاً صناديق بيع — قائمة "الصندوق" بالكاشير بتعرض هاي بس بدل كل
+          حسابات دليل الحسابات. اترك القائمة فاضية لعرض كل الحسابات كما كانت.
+        </p>
+        <div style={{ maxHeight: 280, overflowY: 'auto', border: '1px solid var(--line)', borderRadius: 6, padding: '0.5rem' }}>
+          {Object.entries(
+            (accounts ?? []).reduce<Record<string, AccOpt[]>>((groups, a) => {
+              const label = a.account_categories?.name_ar ?? UNCATEGORIZED;
+              (groups[label] ??= []).push(a);
+              return groups;
+            }, {})
+          ).map(([label, rows]) => (
+            <div key={label} style={{ marginBottom: '0.5rem' }}>
+              <div className="muted" style={{ fontSize: '0.78rem', fontWeight: 600 }}>{label}</div>
+              {rows.map((a) => (
+                <label key={a.id} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', width: 'auto', margin: '0.2rem 0', fontSize: '0.85rem' }}>
+                  <input type="checkbox" style={{ width: 'auto' }} checked={posRegisters.has(a.id)} onChange={() => toggleRegister(a.id)} />
+                  {a.code} · {a.name_ar}
+                </label>
+              ))}
+            </div>
+          ))}
+        </div>
+        <button className="btn-primary" disabled={busy} onClick={savePosRegisters} style={{ marginTop: '0.5rem' }}>حفظ</button>
       </div>
     </>
   );

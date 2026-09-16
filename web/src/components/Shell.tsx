@@ -20,6 +20,7 @@ const nav: { section: string | null; items: { to: string; label: string }[] }[] 
       { to: '/sales-invoices', label: 'فواتير المبيعات' },
       { to: '/sales-returns', label: 'مرتجعات المبيعات' },
       { to: '/pos', label: 'الكاشير' },
+      { to: '/cash-shifts', label: 'ورديات الصندوق' },
     ],
   },
   {

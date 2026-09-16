@@ -21,8 +21,17 @@ declare
   r record;
   v_total bigint;
   v_before_count int;
+  -- create_organization() now seeds a full default chart of accounts
+  -- (20250911003800) — hundreds of audit_log rows that would otherwise
+  -- swamp audit_log_query()'s 200-row hard cap. v_marker/v_total_since_marker
+  -- scope the actor/date-range assertions below to just THIS test's own
+  -- handful of operations, same way v_total already scoped totals before
+  -- that seeding existed.
+  v_marker timestamptz;
+  v_total_since_marker bigint;
 begin
   select count(*) into v_before_count from audit_log where org_id = v_org;
+  v_marker := clock_timestamp();
 
   -- generate a real INSERT/UPDATE/DELETE spread across two different tables
   insert into accounts (org_id, code, name_ar, is_postable, nature) values (v_org, 'AUD1', 'حساب اختبار', true, 'debit') returning id into v_acc;
@@ -30,6 +39,8 @@ begin
 
   insert into currencies (org_id, code, name_ar, decimal_places) values (v_org, 'AUDUSD', 'دولار اختبار', 2) returning id into v_cur;
   delete from currencies where id = v_cur;
+
+  select count(*) into v_total_since_marker from audit_log where org_id = v_org and at >= v_marker;
 
   -- =========================================================================
   -- 1) unfiltered query sees everything for this org, newest first, with total_count
@@ -60,7 +71,8 @@ begin
   -- =========================================================================
   -- 4) filter by actor
   -- =========================================================================
-  assert (select count(*) from audit_log_query(v_org, p_user_id := v_owner)) = v_total, 'every row in this test was done by the owner';
+  assert (select count(*) from audit_log_query(v_org, p_user_id := v_owner, p_from := v_marker, p_limit := 200)) = v_total_since_marker,
+    'every row done since the marker in this test was done by the owner';
   select * into r from audit_log_query(v_org, p_table_name := 'accounts', p_action := 'UPDATE') limit 1;
   assert r.user_email = 'owner@audit.test', 'actor email should be joined in correctly';
 
@@ -69,7 +81,8 @@ begin
   -- =========================================================================
   assert (select count(*) from audit_log_query(v_org, p_from := now() + interval '1 hour')) = 0, 'a from-the-future filter should match nothing';
   assert (select count(*) from audit_log_query(v_org, p_to := now() - interval '1 hour')) = 0, 'a to-the-past filter should match nothing';
-  assert (select count(*) from audit_log_query(v_org, p_from := now() - interval '1 minute', p_to := now() + interval '1 minute')) = v_total, 'a wide-enough window should match everything';
+  assert (select count(*) from audit_log_query(v_org, p_from := v_marker, p_to := now() + interval '1 minute', p_limit := 200)) = v_total_since_marker,
+    'a wide-enough window since the marker should match everything since the marker';
 
   -- =========================================================================
   -- 6) pagination

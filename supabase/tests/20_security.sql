@@ -14,11 +14,14 @@ select set_config('t.orga', create_organization('ORGA', 'مؤسسة أ', 'NIS', 
 do $$
 declare v_org uuid := current_setting('t.orga')::uuid;
 begin
+  -- codes prefixed Z: create_organization() now seeds a real default chart
+  -- of accounts (20250911003800) using plain 10000-65999 numeric codes, so
+  -- this test's own scratch accounts need codes that can't collide with it
   insert into accounts (org_id, code, name_ar, is_postable, nature) values
-    (v_org, '10000', 'أصول', false, 'debit');
+    (v_org, 'Z1000', 'أصول', false, 'debit');
   insert into accounts (org_id, code, name_ar, parent_id, is_postable, nature) values
-    (v_org, '10101', 'صندوق', (select id from accounts where org_id=v_org and code='10000'), true, 'debit'),
-    (v_org, '40101', 'مبيعات', (select id from accounts where org_id=v_org and code='10000'), true, 'credit');
+    (v_org, 'Z1010', 'صندوق', (select id from accounts where org_id=v_org and code='Z1000'), true, 'debit'),
+    (v_org, 'Z4010', 'مبيعات', (select id from accounts where org_id=v_org and code='Z1000'), true, 'credit');
 end $$;
 
 -- user B builds org B and must NOT see org A
@@ -41,8 +44,8 @@ begin
     perform create_journal_entry(
       v_orga, current_date, 'محاولة اختراق',
       jsonb_build_array(
-        jsonb_build_object('account_id', (select id from accounts where org_id=v_orga and code='10101'), 'debit', 1, 'currency_id', (select base_currency_id from organizations where id=v_orga)),
-        jsonb_build_object('account_id', (select id from accounts where org_id=v_orga and code='40101'), 'credit', 1, 'currency_id', (select base_currency_id from organizations where id=v_orga))
+        jsonb_build_object('account_id', (select id from accounts where org_id=v_orga and code='Z1010'), 'debit', 1, 'currency_id', (select base_currency_id from organizations where id=v_orga)),
+        jsonb_build_object('account_id', (select id from accounts where org_id=v_orga and code='Z4010'), 'credit', 1, 'currency_id', (select base_currency_id from organizations where id=v_orga))
       ));
     raise exception 'SECURITY FAIL: user B created an entry in org A';
   exception when sqlstate '42501' then null;
@@ -63,8 +66,8 @@ declare
   v_base uuid;
   v_d date;
 begin
-  select id from accounts where org_id = v_org and code = '10101' into v_cash;
-  select id from accounts where org_id = v_org and code = '40101' into v_sales;
+  select id from accounts where org_id = v_org and code = 'Z1010' into v_cash;
+  select id from accounts where org_id = v_org and code = 'Z4010' into v_sales;
   select base_currency_id from organizations where id = v_org into v_base;
 
   select id, start_date into v_pid, v_d from fiscal_periods
