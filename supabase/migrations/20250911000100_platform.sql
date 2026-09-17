@@ -21,7 +21,7 @@ $$;
 -- ---------------------------------------------------------------------------
 create table organizations (
   id                  uuid primary key default extensions.gen_random_uuid(),
-  code                citext not null unique,
+  code                extensions.citext not null unique,
   name_ar             text not null,
   name_en             text,
   -- base_currency_id is wired up in the currencies migration (deferred FK).

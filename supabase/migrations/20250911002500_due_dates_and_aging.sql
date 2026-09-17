@@ -267,7 +267,7 @@ $$;
 create or replace function ar_aging_detail(p_org uuid, p_as_of date default current_date)
 returns table (
   dealer_id      uuid,
-  dealer_code    citext,
+  dealer_code    extensions.citext,
   dealer_name    text,
   invoice_id     uuid,
   invoice_no     bigint,
@@ -318,7 +318,7 @@ $$;
 create or replace function ap_aging_detail(p_org uuid, p_as_of date default current_date)
 returns table (
   dealer_id      uuid,
-  dealer_code    citext,
+  dealer_code    extensions.citext,
   dealer_name    text,
   invoice_id     uuid,
   invoice_no     bigint,

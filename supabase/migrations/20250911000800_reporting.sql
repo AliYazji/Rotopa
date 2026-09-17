@@ -8,7 +8,7 @@
 create or replace function trial_balance(p_org uuid, p_as_of date default null)
 returns table (
   account_id  uuid,
-  code        citext,
+  code        extensions.citext,
   name_ar     text,
   depth       smallint,
   debit       numeric(19,4),

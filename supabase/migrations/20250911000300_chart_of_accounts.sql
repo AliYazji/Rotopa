@@ -33,7 +33,7 @@ create index on account_categories (org_id);
 create table accounts (
   id            uuid primary key default extensions.gen_random_uuid(),
   org_id        uuid not null references organizations(id) on delete cascade,
-  code          citext not null,
+  code          extensions.citext not null,
   name_ar       text not null,
   name_en       text,
 

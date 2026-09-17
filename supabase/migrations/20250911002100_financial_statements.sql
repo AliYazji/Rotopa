@@ -39,7 +39,7 @@ returns table (
   section           text,
   category_sort     int,
   account_id        uuid,
-  account_code      citext,
+  account_code      extensions.citext,
   account_name_ar   text,
   amount            numeric(19,4)
 ) language sql stable security invoker set search_path = public as $$
@@ -76,7 +76,7 @@ returns table (
   section           text,
   category_sort     int,
   account_id        uuid,
-  account_code      citext,
+  account_code      extensions.citext,
   account_name_ar   text,
   amount            numeric(19,4)
 ) language sql stable security invoker set search_path = public as $$

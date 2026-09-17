@@ -19,7 +19,7 @@ $$;
 create table currencies (
   id            uuid primary key default extensions.gen_random_uuid(),
   org_id        uuid not null references organizations(id) on delete cascade,
-  code          citext not null,                 -- ISO 4217 where possible: NIS, USD, JOD
+  code          extensions.citext not null,                 -- ISO 4217 where possible: NIS, USD, JOD
   name_ar       text not null,
   name_en       text,
   symbol        text,

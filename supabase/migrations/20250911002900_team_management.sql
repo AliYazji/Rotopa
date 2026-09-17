@@ -28,7 +28,7 @@
 create table membership_invitations (
   id                uuid primary key default extensions.gen_random_uuid(),
   org_id            uuid not null references organizations(id) on delete cascade,
-  email             citext not null,
+  email             extensions.citext not null,
   role_id           uuid not null references roles(id) on delete restrict,
   default_branch_id uuid references branches(id) on delete set null,
   status            text not null default 'pending' check (status in ('pending','accepted','cancelled')),
