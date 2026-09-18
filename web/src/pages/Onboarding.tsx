@@ -3,11 +3,24 @@ import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase.ts';
 import { useAuth } from '../lib/auth.tsx';
 
+const SECTORS: { value: string; label: string; ready: boolean }[] = [
+  { value: 'restaurant_hotel', label: 'مطاعم وفنادق', ready: true },
+  { value: 'manufacturing', label: 'مصانع وشركات', ready: true },
+  { value: 'pharmacy', label: 'صيدليات', ready: false },
+  { value: 'cafe', label: 'كافيهات', ready: false },
+  { value: 'supermarket', label: 'سوبر ماركت', ready: false },
+  { value: 'salon', label: 'صالونات', ready: false },
+  { value: 'produce', label: 'محلات خضار وفواكه', ready: false },
+  { value: 'chalets_hotels', label: 'شاليهات وفنادق', ready: false },
+  { value: 'equipment_store', label: 'محلات أجهزة ومعدات', ready: false },
+];
+
 export default function Onboarding() {
   const { signOut } = useAuth();
   const qc = useQueryClient();
   const [code, setCode] = useState('');
   const [name, setName] = useState('');
+  const [sector, setSector] = useState('restaurant_hotel');
   const [currCode, setCurrCode] = useState('NIS');
   const [currName, setCurrName] = useState('شيكل');
   const [startMonth, setStartMonth] = useState(1);
@@ -24,6 +37,7 @@ export default function Onboarding() {
       p_base_currency_code: currCode,
       p_base_currency_name_ar: currName,
       p_fiscal_year_start_month: startMonth,
+      p_sector: sector,
     });
     setBusy(false);
     if (error) return setErr(error.message);
@@ -54,6 +68,19 @@ export default function Onboarding() {
             <label>اسم عملة الأساس</label>
             <input value={currName} onChange={(e) => setCurrName(e.target.value)} required />
           </div>
+        </div>
+        <div className="field">
+          <label>مجال العمل</label>
+          <select value={sector} onChange={(e) => setSector(e.target.value)}>
+            {SECTORS.map((s) => (
+              <option key={s.value} value={s.value} disabled={!s.ready}>
+                {s.label}{s.ready ? '' : ' (قريباً)'}
+              </option>
+            ))}
+          </select>
+          <p className="muted" style={{ marginTop: '0.25rem', marginBottom: 0 }}>
+            يحدد دليل الحسابات الذي يُزرع تلقائياً لمؤسستك.
+          </p>
         </div>
         <div className="field">
           <label>بداية السنة المالية (الشهر)</label>
