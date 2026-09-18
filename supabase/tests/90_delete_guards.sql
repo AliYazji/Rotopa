@@ -33,11 +33,18 @@ begin
     jsonb_build_array(jsonb_build_object('account_id',v_a,'debit',10,'currency_id',v_base),
                        jsonb_build_object('account_id',v_b,'credit',10,'currency_id',v_base)));
   perform post_journal_entry(v_entry);
+  -- app.tg_block_delete_unless_draft() (this file's own trigger) would
+  -- raise 23514 for this — but RLS (je_delete, 20250911004600) now
+  -- filters a posted row out of the DELETE's row set before the trigger
+  -- ever runs, so this is a silent 0-row no-op instead (same class of
+  -- RLS-blocks-silently behavior already established for cash_shifts)
+  declare v_rows int;
   begin
     delete from journal_entries where id = v_entry;
-    raise exception 'TEST FAIL: deleted a posted journal entry';
-  exception when sqlstate '23514' then null;
+    get diagnostics v_rows = row_count;
+    if v_rows <> 0 then raise exception 'TEST FAIL: deleted a posted journal entry'; end if;
   end;
+  assert exists (select 1 from journal_entries where id = v_entry), 'the posted journal entry should still exist';
 
   -- 2) a draft voucher can be deleted; a posted one cannot
   v_voucher := create_voucher(v_org, 'receipt', current_date, 'مسودة', v_a, v_base,

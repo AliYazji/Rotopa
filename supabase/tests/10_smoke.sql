@@ -81,11 +81,16 @@ begin
   exception when sqlstate '23514' then null;
   end;
 
-  -- 7. posted entry is immutable
+  -- 7. posted entry is immutable — RLS (je_update, 20250911004600) now
+  --    filters a posted row out of any direct UPDATE's OLD-row check
+  --    before app.tg_journal_entry_guard() ever runs, so this is a
+  --    silent 0-row no-op rather than a raised exception (same class of
+  --    RLS-blocks-silently behavior already established for cash_shifts)
+  declare v_rows int;
   begin
     update journal_entries set description = 'tampered' where id in (select id from journal_entries where status='posted' limit 1);
-    raise exception 'TEST FAIL: edited a posted entry';
-  exception when sqlstate '23514' then null;
+    get diagnostics v_rows = row_count;
+    if v_rows <> 0 then raise exception 'TEST FAIL: edited a posted entry'; end if;
   end;
 
   -- 8. void produces a reversing entry and zeroes the balance
