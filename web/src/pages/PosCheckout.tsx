@@ -12,6 +12,7 @@ interface CatOpt { id: string; name_ar: string; }
 interface DealerOpt { id: string; code: string; name_ar: string; }
 interface ItemHit {
   id: string; code: string; name_ar: string; sales_price: number; base_unit_name: string; category_id: string | null;
+  is_composite: boolean;
   item_warehouse_balances: { qty: number; avg_cost: number | null; warehouse_id: string }[];
   item_units: ItemUnitOpt[];
 }
@@ -190,8 +191,8 @@ export default function PosCheckout() {
     enabled: !!org && !!settings.warehouseId,
     queryFn: async (): Promise<ItemHit[]> => {
       let q = supabase.from('items')
-        .select('id, code, name_ar, sales_price, base_unit_name, category_id, item_warehouse_balances(qty, avg_cost, warehouse_id), item_units(id, unit_name, conversion_factor, is_sales_default, is_purchase_default)')
-        .eq('is_active', true).eq('is_stock_tracked', true).order('name_ar').limit(40);
+        .select('id, code, name_ar, sales_price, base_unit_name, category_id, is_composite, item_warehouse_balances(qty, avg_cost, warehouse_id), item_units(id, unit_name, conversion_factor, is_sales_default, is_purchase_default)')
+        .eq('is_active', true).or('is_stock_tracked.eq.true,is_composite.eq.true').order('name_ar').limit(40);
       // no search/category chosen yet -> a default browse list (capped at
       // 40) instead of an empty grid; typing, scanning a barcode, or picking
       // a category narrows it
@@ -247,9 +248,13 @@ export default function PosCheckout() {
       if (existing) return ls.map((l) => (l.itemId === hit.id ? { ...l, qty: l.qty + 1 } : l));
       const balance = balanceOf(hit);
       const defaultUnit = hit.item_units.find((u) => u.is_sales_default);
+      // a composite item has no stock balance of its own — its real
+      // availability depends on its recipe's components, which
+      // post_sales_invoice checks server-side; null means "not tracked
+      // here", never "zero"
       return [...ls, {
         itemId: hit.id, code: hit.code, name: hit.name_ar, unitPrice: String(hit.sales_price),
-        baseUnitName: hit.base_unit_name, qty: 1, onHand: balance ? Number(balance.qty) : 0,
+        baseUnitName: hit.base_unit_name, qty: 1, onHand: hit.is_composite ? null : (balance ? Number(balance.qty) : 0),
         units: hit.item_units ?? [], unitId: defaultUnit?.id ?? '',
         discountPct: '0', discountMode: 'pct', avgCost: balance?.avg_cost != null ? Number(balance.avg_cost) : null,
       }];
@@ -296,6 +301,7 @@ export default function PosCheckout() {
     const effectiveDealerId = dealerId || (paymentType === 'cash' ? walkinDealer?.id : '');
     if (paymentType === 'credit' && (!dealerId || dealerId === walkinDealer?.id)) return setErr('اختر زبوناً مسجّلاً للبيع الآجل');
     if (paymentType === 'cash' && !settings.cashAccountId) return setErr('اختر الصندوق');
+    if (paymentType === 'cash' && !openShift) return setErr('لا يمكن إتمام بيع نقدي قبل فتح وردية على الصندوق المختار.');
     if (!effectiveDealerId) return setErr('ما في زبون نقدي عام معرَّف بعد — أنشئه من الإعدادات فوق');
 
     setBusy(true);
@@ -396,13 +402,15 @@ export default function PosCheckout() {
               <h2 style={{ fontSize: '0.85rem', color: 'var(--muted)', margin: '0 0 0.4rem' }}>{g.label}</h2>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: '0.6rem' }}>
                 {g.rows.map((it) => {
-                  const onHand = Number(balanceOf(it)?.qty ?? 0);
+                  const onHand = it.is_composite ? null : Number(balanceOf(it)?.qty ?? 0);
                   return (
                     <button key={it.id} className="card" style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', gap: '0.4rem', padding: '0.75rem' }} onClick={() => addToCart(it)}>
                       <span className="mono muted" style={{ fontSize: '0.75rem' }}>{it.code}</span>
                       <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>{it.name_ar}</span>
                       <span className="mono" style={{ marginTop: 'auto', fontWeight: 600 }}>{fmtMoney(it.sales_price)}</span>
-                      <span className={onHand > 0 ? 'muted' : 'error'} style={{ fontSize: '0.75rem' }}>متوفر: {fmtMoney(onHand)}</span>
+                      {onHand === null
+                        ? <span className="muted" style={{ fontSize: '0.75rem' }}>صنف مركّب — التوفر حسب المكونات</span>
+                        : <span className={onHand > 0 ? 'muted' : 'error'} style={{ fontSize: '0.75rem' }}>متوفر: {fmtMoney(onHand)}</span>}
                     </button>
                   );
                 })}
@@ -449,8 +457,8 @@ export default function PosCheckout() {
                     <Link to={`/cash-shifts/${openShift.id}`}>عرض</Link>
                   </p>
                 ) : (
-                  <p className="muted" style={{ fontSize: '0.78rem', marginTop: '0.25rem' }}>
-                    ما في وردية مفتوحة على هذا الصندوق. <Link to="/cash-shifts">فتح وردية ›</Link>
+                  <p className="error" style={{ fontSize: '0.78rem', marginTop: '0.25rem' }}>
+                    ما في وردية مفتوحة على هذا الصندوق — لازم تُفتح قبل أي بيع نقدي. <Link to="/cash-shifts">فتح وردية ›</Link>
                   </p>
                 )
               )}
