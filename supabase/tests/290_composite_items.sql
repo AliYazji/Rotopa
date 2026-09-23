@@ -132,8 +132,9 @@ begin
   assert s.d = s.c, 'the combined invoice entry (composite + ordinary line) must balance';
 
   -- =========================================================================
-  -- 4) void restores the components (at their current average, not
-  --    necessarily identical to the original consumption cost)
+  -- 4) void restores the components at their ORIGINAL sale-time cost
+  --    (precision under a changed recipe/cost is covered separately in
+  --    supabase/tests/450_composite_void_precision.sql)
   -- =========================================================================
   perform void_sales_invoice(v_inv, current_date, 'اختبار الإلغاء');
   assert item_stock_on_hand(v_icecream, v_wh) = before_icecream, 'ice cream should be fully restored';
