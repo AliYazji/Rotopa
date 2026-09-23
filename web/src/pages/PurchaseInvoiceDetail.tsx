@@ -11,6 +11,7 @@ interface Invoice {
   payment_method: 'credit' | 'cash'; cash_account_id: string | null; description: string;
   dealer_id: string; warehouse_id: string;
   dealer: { name_ar: string } | null; void_reason: string | null;
+  tax_rate: number; tax_amount: number;
 }
 interface Line {
   id: string; line_no: number; item_id: string; qty: number; unit_price: number; discount_pct: number; line_total: number;
@@ -60,7 +61,7 @@ export default function PurchaseInvoiceDetail() {
     enabled: !!id,
     queryFn: async (): Promise<Invoice> => {
       const { data, error } = await supabase.from('purchase_invoices')
-        .select('id, invoice_no, invoice_date, due_date, status, payment_method, cash_account_id, description, dealer_id, warehouse_id, void_reason, dealer:dealer_id(name_ar)')
+        .select('id, invoice_no, invoice_date, due_date, status, payment_method, cash_account_id, description, dealer_id, warehouse_id, void_reason, tax_rate, tax_amount, dealer:dealer_id(name_ar)')
         .eq('id', id).single();
       if (error) throw error;
       return data as unknown as Invoice;
@@ -205,6 +206,12 @@ export default function PurchaseInvoiceDetail() {
     if (editing) { const q = parseFloat(l.qty) || 0, p = parseFloat(l.unitPrice) || 0, d = parseFloat(l.discountPct) || 0; return s + q * p * (1 - d / 100); }
     return s + Number(l.line_total);
   }, 0);
+  // a posted/void invoice already has its VAT frozen at posting time — show
+  // that exact historical amount, never the org's current live rate, which
+  // may have changed since; only a still-draft invoice previews the live rate
+  const isFrozen = invoice.status !== 'draft';
+  const displayVatRate = isFrozen ? Number(invoice.tax_rate) : taxRate;
+  const displayVat = isFrozen ? Number(invoice.tax_amount) : total * taxRate;
 
   return (
     <>
@@ -305,8 +312,8 @@ export default function PurchaseInvoiceDetail() {
             </tbody>
             <tfoot>
               <tr><td colSpan={4}>المجموع قبل الضريبة</td><td className="num">{fmtMoney(total)}</td><td /></tr>
-              {taxEnabled && <tr className="muted"><td colSpan={4}>ضريبة القيمة المضافة ({fmtPct(taxRate)})</td><td className="num">{fmtMoney(total * taxRate)}</td><td /></tr>}
-              <tr style={{ fontWeight: 700 }}><td colSpan={4}>الإجمالي شامل الضريبة</td><td className="num">{fmtMoney(total * (1 + taxRate))}</td><td /></tr>
+              {taxEnabled && <tr className="muted"><td colSpan={4}>ضريبة القيمة المضافة ({fmtPct(displayVatRate)})</td><td className="num">{fmtMoney(displayVat)}</td><td /></tr>}
+              <tr style={{ fontWeight: 700 }}><td colSpan={4}>الإجمالي شامل الضريبة</td><td className="num">{fmtMoney(total + displayVat)}</td><td /></tr>
             </tfoot>
           </table>
           <button type="button" onClick={() => setEditLines((ls) => [...ls, { key: keySeq++, itemId: '', itemLabel: '', qty: '1', unitPrice: '', discountPct: '0', baseUnitName: '', unitId: '', units: [] }])} style={{ marginTop: '0.5rem' }}>+ صنف</button>
@@ -347,13 +354,13 @@ export default function PurchaseInvoiceDetail() {
               </tr>
               {taxEnabled && (
                 <tr className="muted">
-                  <td colSpan={4}>ضريبة القيمة المضافة ({fmtPct(taxRate)})</td>
-                  <td className="num">{fmtMoney(total * taxRate)}</td>
+                  <td colSpan={4}>ضريبة القيمة المضافة ({fmtPct(displayVatRate)})</td>
+                  <td className="num">{fmtMoney(displayVat)}</td>
                 </tr>
               )}
               <tr style={{ fontWeight: 700 }}>
                 <td colSpan={4}>الإجمالي شامل الضريبة</td>
-                <td className="num">{fmtMoney(total * (1 + taxRate))}</td>
+                <td className="num">{fmtMoney(total + displayVat)}</td>
               </tr>
             </tfoot>
           </table>
@@ -364,7 +371,7 @@ export default function PurchaseInvoiceDetail() {
         <div className="card" style={{ maxWidth: 460 }}>
           <p className="muted" style={{ fontSize: '0.85rem' }}>
             {taxEnabled
-              ? <>الإجمالي شامل الضريبة ({fmtPct(taxRate)}): <strong>{fmtMoney(total * (1 + taxRate))}</strong> (منها {fmtMoney(total * taxRate)} ضريبة)</>
+              ? <>الإجمالي شامل الضريبة ({fmtPct(displayVatRate)}): <strong>{fmtMoney(total + displayVat)}</strong> (منها {fmtMoney(displayVat)} ضريبة)</>
               : <>الإجمالي (الضريبة معطّلة): <strong>{fmtMoney(total)}</strong></>}
           </p>
           {taxEnabled && (
