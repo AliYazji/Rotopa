@@ -86,4 +86,57 @@ else
   echo "--- attempt B full output ---"; cat /tmp/attempt_b.out
 fi
 rm -f /tmp/attempt_a.out /tmp/attempt_b.out
-exit $FAIL
+
+echo "── fixture #2: a 10-unit invoice line with two pre-created 8-unit draft returns ──"
+RUN -v ON_ERROR_STOP=1 -q < supabase/tests/concurrency/setup_returns.sql
+
+echo "── launching two concurrent posts of those two draft returns ──"
+RUN < supabase/tests/concurrency/attempt_return_a.sql > /tmp/attempt_ra.out 2>&1 &
+PID_RA=$!
+RUN < supabase/tests/concurrency/attempt_return_b.sql > /tmp/attempt_rb.out 2>&1 &
+PID_RB=$!
+wait "$PID_RA" "$PID_RB"
+
+RESULT_RA=$(grep -o 'RESULT: [a-z_]*' /tmp/attempt_ra.out || echo "RESULT: NONE")
+RESULT_RB=$(grep -o 'RESULT: [a-z_]*' /tmp/attempt_rb.out || echo "RESULT: NONE")
+echo "  return A: $RESULT_RA"
+echo "  return B: $RESULT_RB"
+
+FINAL_RETURNED=$(RUN -t -A -c "
+  select coalesce(sum(l.qty), 0)
+  from sales_return_lines l join sales_returns r on r.id = l.return_id
+  where l.sales_invoice_line_id = (select v from concurrency_handshake where k = 'ret_invoice_line_id')
+    and r.status = 'posted';
+" | tr -d '[:space:]')
+echo "  final posted-returned qty: $FINAL_RETURNED"
+
+FAIL2=0
+SUCCESSES2=$(printf '%s\n%s\n' "$RESULT_RA" "$RESULT_RB" | grep -c 'RESULT: success' || true)
+REJECTIONS2=$(printf '%s\n%s\n' "$RESULT_RA" "$RESULT_RB" | grep -c 'RESULT: over_return' || true)
+
+if [ "$SUCCESSES2" -ne 1 ]; then
+  echo "  ✗ expected exactly 1 successful return post, got $SUCCESSES2 — an over-return race would show 2"
+  FAIL2=1
+fi
+if [ "$REJECTIONS2" -ne 1 ]; then
+  echo "  ✗ expected exactly 1 over_return rejection, got $REJECTIONS2"
+  FAIL2=1
+fi
+if [ "$FINAL_RETURNED" != "8.0000" ]; then
+  echo "  ✗ expected final posted-returned qty to be exactly 8 (not 16), got $FINAL_RETURNED"
+  FAIL2=1
+fi
+
+if [ "$FAIL2" -eq 0 ]; then
+  echo "✓ CONCURRENCY: SALES RETURN OVER-RETURN GUARD HOLDS UNDER REAL CONCURRENT ACCESS"
+else
+  echo "✗ RETURN CONCURRENCY TEST FAILED — see output above"
+  echo "--- return A full output ---"; cat /tmp/attempt_ra.out
+  echo "--- return B full output ---"; cat /tmp/attempt_rb.out
+fi
+rm -f /tmp/attempt_ra.out /tmp/attempt_rb.out
+
+if [ "$FAIL" -ne 0 ] || [ "$FAIL2" -ne 0 ]; then
+  exit 1
+fi
+exit 0

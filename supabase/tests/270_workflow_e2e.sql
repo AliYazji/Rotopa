@@ -114,7 +114,7 @@ begin
   -- =========================================================================
   -- 7) the customer returns 5 of the 30 units sold
   -- =========================================================================
-  v_return := create_sales_return(v_org, v_sinv, jsonb_build_array(jsonb_build_object('item_id', v_item, 'qty', 5)));
+  v_return := create_sales_return(v_org, v_sinv, jsonb_build_array(jsonb_build_object('invoice_line_id', (select id from sales_invoice_lines where invoice_id = v_sinv), 'qty', 5)));
   perform post_sales_return(v_return, p_output_vat_account_id := v_vat_out);
   assert item_stock_on_hand(v_item, v_wh) = 75, 'the 5 returned units should come back into stock (70 + 5)';
 

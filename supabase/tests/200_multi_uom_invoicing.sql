@@ -16,7 +16,7 @@ declare
   v_parent uuid; v_ar uuid; v_ap uuid; v_cash uuid; v_sales_acc uuid; v_inv_acc uuid; v_cogs_acc uuid; v_equity uuid;
   v_vat_out uuid; v_vat_in uuid;
   v_wh uuid; v_item uuid; v_carton uuid; v_cust uuid; v_supp uuid;
-  v_pinv uuid; v_sinv uuid; v_sret uuid; v_pret uuid;
+  v_pinv uuid; v_sinv uuid; v_sret uuid; v_pret uuid; v_sinv_line uuid;
 begin
   insert into accounts (org_id, code, name_ar, is_postable, nature) values (v_org,'PAR','أصول',false,'debit') returning id into v_parent;
   insert into accounts (org_id, code, name_ar, parent_id, is_postable, nature) values (v_org,'AR','ذمم عملاء',v_parent,true,'debit') returning id into v_ar;
@@ -71,13 +71,14 @@ begin
   -- =========================================================================
   -- Return 1 of the 2 كرتون sold -> inherits the carton unit automatically
   -- =========================================================================
-  v_sret := create_sales_return(v_org, v_sinv, jsonb_build_array(jsonb_build_object('item_id', v_item, 'qty', 1)));
+  v_sinv_line := (select id from sales_invoice_lines where invoice_id = v_sinv);
+  v_sret := create_sales_return(v_org, v_sinv, jsonb_build_array(jsonb_build_object('invoice_line_id', v_sinv_line, 'qty', 1)));
   assert (select unit_id from sales_return_lines where return_id = v_sret) = v_carton, 'return should inherit the original sale''s unit automatically';
   assert (select base_qty from sales_return_lines where return_id = v_sret) = 12, 'returning 1 كرتون should be 12 قطعة at the base level';
 
   -- over-return: only 1 كرتون remains returnable (2 sold - 1 already being returned isn't posted yet, so this checks the qty=2 attempt against the ORIGINAL 2 sold)
   begin
-    perform create_sales_return(v_org, v_sinv, jsonb_build_array(jsonb_build_object('item_id', v_item, 'qty', 3)));
+    perform create_sales_return(v_org, v_sinv, jsonb_build_array(jsonb_build_object('invoice_line_id', v_sinv_line, 'qty', 3)));
     raise exception 'TEST FAIL: over-returned in carton units';
   exception when sqlstate '23514' then null;
   end;
@@ -96,7 +97,7 @@ begin
   -- =========================================================================
   -- Purchase return: 1 of the 5 كرتون purchased goes back
   -- =========================================================================
-  v_pret := create_purchase_return(v_org, v_pinv, jsonb_build_array(jsonb_build_object('item_id', v_item, 'qty', 1)));
+  v_pret := create_purchase_return(v_org, v_pinv, jsonb_build_array(jsonb_build_object('invoice_line_id', (select id from purchase_invoice_lines where invoice_id = v_pinv), 'qty', 1)));
   assert (select base_qty from purchase_return_lines where return_id = v_pret) = 12, 'purchase return base_qty should be 12 (1 carton)';
   perform post_purchase_return(v_pret, v_vat_in);
   assert item_stock_on_hand(v_item, v_wh) = 24, 'stock should drop by 12 (36 - 12)';

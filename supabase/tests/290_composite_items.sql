@@ -149,10 +149,17 @@ begin
   v_inv := create_sales_invoice(v_org, current_date, v_cust, v_wh,
     jsonb_build_array(jsonb_build_object('item_id', v_cup, 'qty', 1, 'unit_price', 12)));
   perform post_sales_invoice(v_inv, p_output_vat_account_id := v_vat_out);
-  begin
-    perform create_sales_return(v_org, v_inv, jsonb_build_array(jsonb_build_object('item_id', v_cup, 'qty', 1)));
-    raise exception 'TEST FAIL: created a return for a composite item';
-  exception when sqlstate '23514' then null;
+  declare v_inv_line uuid; v_caught boolean; v_msg text; begin
+    v_inv_line := (select id from sales_invoice_lines where invoice_id = v_inv);
+    v_caught := false;
+    begin
+      perform create_sales_return(v_org, v_inv, jsonb_build_array(jsonb_build_object('invoice_line_id', v_inv_line, 'qty', 1)));
+    exception when sqlstate '23514' then
+      v_caught := true;
+      get stacked diagnostics v_msg = message_text;
+    end;
+    assert v_caught, 'TEST FAIL: created a return for a composite item';
+    assert v_msg ilike '%composite%', 'the rejection should specifically be about the composite item, not some other 23514, got: ' || coalesce(v_msg, '<null>');
   end;
 
   raise notice 'COMPOSITE ITEMS OK';
