@@ -139,7 +139,9 @@ begin
       (select base_currency_id from organizations where id = v_org),
       jsonb_build_array(jsonb_build_object('account_id', v_ar, 'amount', 1, 'dealer_id', v_cust)));
     perform post_voucher(v_blocked_voucher);
-    raise exception 'TEST FAIL: posted a voucher into a closed period';
+    -- distinct errcode so this can never collide with the guard's own
+    -- default P0001
+    raise exception 'TEST FAIL: posted a voucher into a closed period' using errcode = '99001';
   exception when sqlstate 'P0001' then null;
   end;
   perform reopen_fiscal_period(v_period_id, 'استكمال اختبار شامل بعد الإقفال التجريبي');
