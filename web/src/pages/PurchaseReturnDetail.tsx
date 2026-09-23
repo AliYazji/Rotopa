@@ -26,8 +26,6 @@ export default function PurchaseReturnDetail() {
   const qc = useQueryClient();
   const [reason, setReason] = useState('');
   const [vatAccountId, setVatAccountId] = useState('');
-  const [varianceAccountId, setVarianceAccountId] = useState('');
-  const [needsVariance, setNeedsVariance] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -74,18 +72,12 @@ export default function PurchaseReturnDetail() {
   async function postReturn() {
     setErr(null); setBusy(true);
     if (taxEnabled && !vatAccountId) { setBusy(false); return setErr('اختر حساب ضريبة المدخلات'); }
-    if (needsVariance && !varianceAccountId) { setBusy(false); return setErr('اختر حساب فروقات تقييم المشتريات'); }
     const { error } = await supabase.rpc('post_purchase_return', {
       p_return_id: id,
       p_input_vat_account_id: taxEnabled ? vatAccountId : null,
-      p_variance_account_id: varianceAccountId || null,
     });
     setBusy(false);
-    if (error) {
-      const msg = error.message || '';
-      if (msg.includes('variance') || msg.includes('فروقات')) setNeedsVariance(true);
-      return setErr(translateError(msg));
-    }
+    if (error) return setErr(translateError(error.message));
     await refresh();
   }
 
@@ -162,18 +154,6 @@ export default function PurchaseReturnDetail() {
             <div className="field">
               <label>حساب ضريبة المدخلات</label>
               <select value={vatAccountId} onChange={(e) => setVatAccountId(e.target.value)}>
-                <option value="">—</option>
-                {accounts?.map((a) => <option key={a.id} value={a.id}>{a.code} · {a.name_ar}</option>)}
-              </select>
-            </div>
-          )}
-          {needsVariance && (
-            <div className="field">
-              <label>حساب فروقات تقييم المشتريات</label>
-              <p className="muted" style={{ fontSize: '0.85rem', marginTop: 0 }}>
-                تغيّر متوسط تكلفة الصنف منذ الشراء الأصلي بحيث لا يمكن استيعاب هذا المرجع بالكامل داخل المخزون — حدد حسابًا لتسجيل الفرق.
-              </p>
-              <select value={varianceAccountId} onChange={(e) => setVarianceAccountId(e.target.value)}>
                 <option value="">—</option>
                 {accounts?.map((a) => <option key={a.id} value={a.id}>{a.code} · {a.name_ar}</option>)}
               </select>

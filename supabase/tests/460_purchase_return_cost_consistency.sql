@@ -1,4 +1,5 @@
--- Regression coverage for 20250911005200_purchase_return_cost_consistency.sql.
+-- Regression coverage for 20250911005200_purchase_return_cost_consistency.sql
+-- and 20250911005400_purchase_variance_org_setting.sql.
 --
 -- Before this fix, a purchase return's inventory GL credit (from
 -- purchase_return_lines.line_total, the ORIGINAL receiving cost) and the
@@ -9,9 +10,12 @@
 -- GL inventory account from the inventory sub-ledger. This test manufactures
 -- exactly that drift, then proves: (a) the safe case reverses at the
 -- original cost and keeps GL == sub-ledger exactly, (b) the unsafe case
--- (drift too large to absorb) is rejected without an explicit variance
--- account and succeeds cleanly with one, routing exactly the unabsorbable
--- difference to it — never to inventory, never to an arbitrary account.
+-- (drift too large to absorb) is rejected until the organization's fixed
+-- purchase-variance account (org_settings key='default_accounts', field
+-- purchase_variance_account_id — never a per-call RPC argument a regular
+-- clerk could pick) is configured, then succeeds cleanly, routing exactly
+-- the unabsorbable difference to it — never to inventory, never to an
+-- arbitrary account.
 \set ON_ERROR_STOP on
 begin;
 
@@ -82,6 +86,7 @@ begin
   -- =========================================================================
   v_ret := create_purchase_return(v_org, v_p1, jsonb_build_array(jsonb_build_object('invoice_line_id', v_p1_line, 'qty', 10)));
 
+  -- no purchase_variance_account_id configured yet in org_settings -> rejected
   v_caught := false; v_msg := null;
   begin
     perform post_purchase_return(v_ret, v_vat_in);
@@ -89,12 +94,25 @@ begin
     v_caught := true;
     get stacked diagnostics v_msg = message_text;
   end;
-  assert v_caught, 'posting this return without a variance account should be rejected — the drift cannot be safely absorbed into inventory';
+  assert v_caught, 'posting this return without a configured variance account should be rejected — the drift cannot be safely absorbed into inventory';
   assert v_msg ilike '%variance%' or v_msg ilike '%فروقات%', 'the rejection should explain a variance account is needed, got: ' || coalesce(v_msg, '<null>');
   assert (select status from purchase_returns where id = v_ret) = 'draft', 'the rejected return should remain a draft';
 
-  perform post_purchase_return(v_ret, v_vat_in, v_variance);
-  assert (select status from purchase_returns where id = v_ret) = 'posted', 'the return should post once a variance account is supplied';
+  -- the RPC itself takes no variance-account argument at all — it is a
+  -- fixed organization setting, not something a posting call can choose
+  assert not exists (
+    select 1 from pg_proc where proname = 'post_purchase_return' and pronargs = 3
+  ), 'post_purchase_return must not have a 3-argument overload — the variance account is an org setting, not an RPC parameter';
+
+  -- configure the org's fixed variance account (same org_settings row/key
+  -- the web Settings page's default_accounts section writes)
+  insert into org_settings (org_id, key, value)
+  values (v_org, 'default_accounts', jsonb_build_object('purchase_variance_account_id', v_variance))
+  on conflict (org_id, key) do update set value = org_settings.value || excluded.value;
+  assert app.purchase_variance_account(v_org) = v_variance, 'the helper should now resolve the configured variance account';
+
+  perform post_purchase_return(v_ret, v_vat_in);
+  assert (select status from purchase_returns where id = v_ret) = 'posted', 'the return should post once the org has a configured variance account';
 
   select qty, avg_cost into v_qty, v_avg from item_warehouse_balances where item_id = v_item and warehouse_id = v_wh;
   assert v_qty = 5, 'the 10 returned units should leave 5 on hand (15 - 10)';

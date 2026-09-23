@@ -10,6 +10,7 @@ interface Order {
   id: string; order_no: number; status: 'open' | 'settled' | 'cancelled'; guest_count: number | null; notes: string;
   warehouse_id: string; sales_invoice_id: string | null; cancel_reason: string | null;
   outlet: { name_ar: string } | null; table: { table_no: string } | null;
+  sales_invoice: { tax_rate: number; tax_amount: number } | null;
 }
 interface Line { id: string; line_no: number; item_id: string; qty: number; unit_price: number; line_total: number; notes: string; item: { code: string; name_ar: string; base_unit_name: string } | null; }
 interface AccOpt { id: string; code: string; name_ar: string; }
@@ -46,7 +47,7 @@ export default function PosOrderDetail() {
     queryKey: ['pos-order', id], enabled: !!id,
     queryFn: async (): Promise<Order> => {
       const { data, error } = await supabase.from('pos_orders')
-        .select('id, order_no, status, guest_count, notes, warehouse_id, sales_invoice_id, cancel_reason, outlet:outlet_id(name_ar), table:table_id(table_no)')
+        .select('id, order_no, status, guest_count, notes, warehouse_id, sales_invoice_id, cancel_reason, outlet:outlet_id(name_ar), table:table_id(table_no), sales_invoice:sales_invoice_id(tax_rate, tax_amount)')
         .eq('id', id).single();
       if (error) throw error; return data as unknown as Order;
     },
@@ -82,11 +83,16 @@ export default function PosOrderDetail() {
     },
   });
 
+  // a settled order already has its VAT frozen on the linked sales invoice
+  // (computed at posting time) — never re-derive it from the org's live
+  // rate, which may have changed since; only a still-open order previews
+  // using the live rate, since that's genuinely what settling will use
   const totals = useMemo(() => {
     const subtotal = (lines ?? []).reduce((s, l) => s + Number(l.line_total), 0);
-    const vat = subtotal * taxRate;
-    return { subtotal, vat, grand: subtotal + vat };
-  }, [lines, taxRate]);
+    const rate = order?.status === 'settled' && order.sales_invoice ? Number(order.sales_invoice.tax_rate) : taxRate;
+    const vat = order?.status === 'settled' && order.sales_invoice ? Number(order.sales_invoice.tax_amount) : subtotal * rate;
+    return { subtotal, vat, grand: subtotal + vat, rate };
+  }, [lines, taxRate, order]);
 
   async function refresh() {
     await qc.invalidateQueries({ queryKey: ['pos-order', id] });
@@ -177,7 +183,7 @@ export default function PosOrderDetail() {
           </tbody>
           <tfoot>
             <tr><td colSpan={3}>المجموع قبل الضريبة</td><td className="num">{fmtMoney(totals.subtotal)}</td>{order.status === 'open' && <td />}</tr>
-            {taxEnabled && <tr className="muted"><td colSpan={3}>ضريبة القيمة المضافة ({fmtPct(taxRate)})</td><td className="num">{fmtMoney(totals.vat)}</td>{order.status === 'open' && <td />}</tr>}
+            {taxEnabled && <tr className="muted"><td colSpan={3}>ضريبة القيمة المضافة ({fmtPct(totals.rate)})</td><td className="num">{fmtMoney(totals.vat)}</td>{order.status === 'open' && <td />}</tr>}
             <tr style={{ fontWeight: 700 }}><td colSpan={3}>الإجمالي شامل الضريبة</td><td className="num">{fmtMoney(totals.grand)}</td>{order.status === 'open' && <td />}</tr>
           </tfoot>
         </table>

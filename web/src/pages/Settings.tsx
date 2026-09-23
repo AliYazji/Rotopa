@@ -8,7 +8,7 @@ import { AccountSelect, type AccOpt } from '../components/AccountSelect.tsx';
 interface OrgRow { id: string; code: string; name_ar: string; fiscal_year_start_month: number; }
 interface PrintSettings { address: string; phone: string; footer_note: string; }
 interface TaxSettings { enabled: boolean; rate: number; }
-interface DefaultAccountsRow { sales_account_id: string | null; output_vat_account_id: string | null; input_vat_account_id: string | null; cash_account_id: string | null; }
+interface DefaultAccountsRow { sales_account_id: string | null; output_vat_account_id: string | null; input_vat_account_id: string | null; cash_account_id: string | null; purchase_variance_account_id: string | null; }
 
 const MONTHS = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
 
@@ -27,6 +27,7 @@ export default function Settings() {
   const [defOutputVatAccountId, setDefOutputVatAccountId] = useState('');
   const [defInputVatAccountId, setDefInputVatAccountId] = useState('');
   const [defCashAccountId, setDefCashAccountId] = useState('');
+  const [defVarianceAccountId, setDefVarianceAccountId] = useState('');
   const [posRegisters, setPosRegisters] = useState<Set<string>>(new Set());
   const [err, setErr] = useState<string | null>(null);
   const [savedMsg, setSavedMsg] = useState<string | null>(null);
@@ -115,6 +116,7 @@ export default function Settings() {
       setDefOutputVatAccountId(defaultAccountsRow.output_vat_account_id ?? '');
       setDefInputVatAccountId(defaultAccountsRow.input_vat_account_id ?? '');
       setDefCashAccountId(defaultAccountsRow.cash_account_id ?? '');
+      setDefVarianceAccountId(defaultAccountsRow.purchase_variance_account_id ?? '');
     }
   }, [defaultAccountsRow]);
   useEffect(() => { if (posRegistersRow) setPosRegisters(new Set(posRegistersRow)); }, [posRegistersRow]);
@@ -163,6 +165,7 @@ export default function Settings() {
         output_vat_account_id: defOutputVatAccountId || null,
         input_vat_account_id: defInputVatAccountId || null,
         cash_account_id: defCashAccountId || null,
+        purchase_variance_account_id: defVarianceAccountId || null,
       },
     });
     setBusy(false);
@@ -270,6 +273,14 @@ export default function Settings() {
         <div className="field">
           <label>الصندوق/البنك الافتراضي (للبيع والشراء النقدي)</label>
           <AccountSelect accounts={accounts} value={defCashAccountId} placeholder="—" onChange={setDefCashAccountId} />
+        </div>
+        <div className="field">
+          <label>حساب فروقات أسعار المشتريات وتقييم المخزون</label>
+          <p className="muted" style={{ fontSize: '0.8rem', marginTop: 0 }}>
+            على عكس ما فوق، هذا الحساب <strong>ثابت</strong> ولا يمكن اختيار حساب آخر عند ترحيل مرجع مشتريات
+            بعينه — يُستخدم فقط في الحالة النادرة التي يتعذّر فيها استيعاب فرق تقييم داخل المخزون بأمان.
+          </p>
+          <AccountSelect accounts={accounts} value={defVarianceAccountId} placeholder="—" onChange={setDefVarianceAccountId} />
         </div>
         <button className="btn-primary" disabled={busy} onClick={saveDefaultAccounts}>حفظ</button>
       </div>
