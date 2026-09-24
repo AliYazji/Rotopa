@@ -79,7 +79,10 @@ begin
       jsonb_build_array(
         jsonb_build_object('account_id', v_cash,  'debit', 10, 'currency_id', v_base),
         jsonb_build_object('account_id', v_sales, 'credit', 10, 'currency_id', v_base)));
-    raise exception 'GUARD FAIL: created entry in a closed period';
+    -- distinct errcode so this can never collide with the guard's own
+    -- default P0001 (a same-code TEST FAIL would silently pass whether
+    -- the guard fired or not)
+    raise exception 'GUARD FAIL: created entry in a closed period' using errcode = '99001';
   exception when sqlstate 'P0001' then null;
   end;
 

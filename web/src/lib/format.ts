@@ -131,6 +131,9 @@ const ERROR_PATTERNS: [RegExp, (m: RegExpMatchArray) => string][] = [
   [/variance account belongs to a different organization/, () => 'حساب فرق الجرد لا ينتمي لهذه المؤسسة.'],
   [/cash shift not found, not open, or belongs to a different organization/, () => 'الوردية المختارة غير موجودة أو مغلقة.'],
   [/a closed cash shift cannot be modified/, () => 'هذه الوردية مغلقة — لا يمكن تعديلها.'],
+
+  [/the item's average cost has moved too far since the original purchase.*configure a purchase\/valuation-variance account in Settings first/,
+    () => 'تغيّر متوسط تكلفة الصنف كثيرًا منذ الشراء الأصلي بحيث لا يمكن استيعاب هذا المرجع بالكامل داخل المخزون — يلزم تهيئة حساب فروقات تقييم المشتريات من الإعدادات أولًا (الإعدادات ‹ الحسابات الافتراضية).'],
 ];
 export function translateError(message: string): string {
   for (const [re, fn] of ERROR_PATTERNS) {

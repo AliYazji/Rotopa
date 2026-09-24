@@ -3,6 +3,9 @@
   "private": true,
   "type": "module",
   "description": "Migrate miles2023 (SQL Server) into a Rotopa organization on Postgres/Supabase",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "etl": "tsx src/run.ts",
     "etl:currencies": "tsx src/run.ts currencies",
@@ -13,7 +16,8 @@
     "etl:opening-stock": "tsx src/run.ts opening-stock",
     "etl:opening": "tsx src/run.ts opening-balances",
     "etl:categorize-accounts": "tsx src/run.ts categorize-accounts",
-    "verify": "tsx src/verify.ts"
+    "verify": "tsx src/verify.ts",
+    "preflight": "tsx src/preflight.ts"
   },
   "dependencies": {
     "dotenv": "^16.4.7",

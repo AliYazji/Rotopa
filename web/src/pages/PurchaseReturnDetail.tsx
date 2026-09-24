@@ -8,7 +8,8 @@ import { fmtDate, fmtMoney, fmtPct, today, translateError } from '../lib/format.
 interface ReturnDoc {
   id: string; return_no: number; return_date: string; status: 'draft' | 'posted' | 'void';
   payment_method: 'credit' | 'cash'; description: string; void_reason: string | null;
-  purchase_invoice: { invoice_no: number } | null; dealer: { name_ar: string } | null;
+  purchase_invoice: { invoice_no: number; tax_rate: number } | null; dealer: { name_ar: string } | null;
+  tax_rate: number; tax_amount: number;
 }
 interface Line {
   id: string; line_no: number; item_id: string; qty: number; unit_price: number; line_total: number;
@@ -21,7 +22,7 @@ const STATUS: Record<string, string> = { draft: 'مسودة', posted: 'مرحّ�
 export default function PurchaseReturnDetail() {
   const { id } = useParams();
   const nav = useNavigate();
-  const { taxRate, taxEnabled, defaultAccounts } = useOrg();
+  const { taxEnabled, defaultAccounts } = useOrg();
   const qc = useQueryClient();
   const [reason, setReason] = useState('');
   const [vatAccountId, setVatAccountId] = useState('');
@@ -37,7 +38,7 @@ export default function PurchaseReturnDetail() {
     enabled: !!id,
     queryFn: async (): Promise<ReturnDoc> => {
       const { data, error } = await supabase.from('purchase_returns')
-        .select('id, return_no, return_date, status, payment_method, description, void_reason, purchase_invoice:purchase_invoice_id(invoice_no), dealer:dealer_id(name_ar)')
+        .select('id, return_no, return_date, status, payment_method, description, void_reason, tax_rate, tax_amount, purchase_invoice:purchase_invoice_id(invoice_no, tax_rate), dealer:dealer_id(name_ar)')
         .eq('id', id).single();
       if (error) throw error;
       return data as unknown as ReturnDoc;
@@ -71,7 +72,10 @@ export default function PurchaseReturnDetail() {
   async function postReturn() {
     setErr(null); setBusy(true);
     if (taxEnabled && !vatAccountId) { setBusy(false); return setErr('اختر حساب ضريبة المدخلات'); }
-    const { error } = await supabase.rpc('post_purchase_return', { p_return_id: id, p_input_vat_account_id: taxEnabled ? vatAccountId : null });
+    const { error } = await supabase.rpc('post_purchase_return', {
+      p_return_id: id,
+      p_input_vat_account_id: taxEnabled ? vatAccountId : null,
+    });
     setBusy(false);
     if (error) return setErr(translateError(error.message));
     await refresh();
@@ -95,6 +99,14 @@ export default function PurchaseReturnDetail() {
 
   if (isLoading || !ret) return <p className="muted">جارٍ التحميل…</p>;
   const total = (lines ?? []).reduce((s, l) => s + Number(l.line_total), 0);
+  // a posted/void return already has its VAT frozen (computed at post time
+  // from the ORIGINAL invoice's own frozen rate, never the org's live
+  // setting); a still-draft return previews using that same original
+  // invoice rate — never the org's current live rate either, since that is
+  // never what post_purchase_return() will actually use
+  const isFrozen = ret.status !== 'draft';
+  const displayVatRate = isFrozen ? Number(ret.tax_rate) : Number(ret.purchase_invoice?.tax_rate ?? 0);
+  const displayVat = isFrozen ? Number(ret.tax_amount) : total * displayVatRate;
 
   return (
     <>
@@ -129,8 +141,8 @@ export default function PurchaseReturnDetail() {
           </tbody>
           <tfoot>
             <tr><td colSpan={3}>المجموع قبل الضريبة</td><td className="num">{fmtMoney(total)}</td></tr>
-            {taxEnabled && <tr className="muted"><td colSpan={3}>ضريبة القيمة المضافة ({fmtPct(taxRate)})</td><td className="num">{fmtMoney(total * taxRate)}</td></tr>}
-            <tr style={{ fontWeight: 700 }}><td colSpan={3}>الإجمالي شامل الضريبة</td><td className="num">{fmtMoney(total * (1 + taxRate))}</td></tr>
+            {taxEnabled && <tr className="muted"><td colSpan={3}>ضريبة القيمة المضافة ({fmtPct(displayVatRate)})</td><td className="num">{fmtMoney(displayVat)}</td></tr>}
+            <tr style={{ fontWeight: 700 }}><td colSpan={3}>الإجمالي شامل الضريبة</td><td className="num">{fmtMoney(total + displayVat)}</td></tr>
           </tfoot>
         </table>
       </div>

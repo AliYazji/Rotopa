@@ -65,7 +65,11 @@ begin
     perform create_journal_entry(v_org, v_d, 'في فترة مقفلة',
       jsonb_build_array(jsonb_build_object('account_id', v_cash, 'debit', 10, 'currency_id', v_base),
                          jsonb_build_object('account_id', v_sales, 'credit', 10, 'currency_id', v_base)));
-    raise exception 'TEST FAIL: posted into a closed period';
+    -- errcode '99001' is a custom code that will never collide with the
+    -- real closed-period guard's own default P0001 (RAISE EXCEPTION with
+    -- no USING ERRCODE) — using the SAME default code here as the guard
+    -- would silently pass this test whether the guard fired or not
+    raise exception 'TEST FAIL: posted into a closed period' using errcode = '99001';
   exception when sqlstate 'P0001' then null;
   end;
 
@@ -134,7 +138,9 @@ begin
     perform create_journal_entry(v_org, v_d, 'بعد إقفال السنة',
       jsonb_build_array(jsonb_build_object('account_id', v_cash, 'debit', 5, 'currency_id', v_base),
                          jsonb_build_object('account_id', v_sales, 'credit', 5, 'currency_id', v_base)));
-    raise exception 'TEST FAIL: posted after the fiscal year was closed';
+    -- see the same-shaped block above: distinct errcode so this can never
+    -- collide with the guard's own default P0001
+    raise exception 'TEST FAIL: posted after the fiscal year was closed' using errcode = '99001';
   exception when sqlstate 'P0001' then null;
   end;
 

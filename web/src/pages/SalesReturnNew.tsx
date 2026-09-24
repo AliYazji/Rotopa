@@ -6,8 +6,8 @@ import { useOrg } from '../lib/org.tsx';
 import { fmtDate, fmtMoney, translateError } from '../lib/format.ts';
 
 interface InvoiceOpt { id: string; invoice_no: number; invoice_date: string; dealer: { name_ar: string } | null; }
-interface InvLine { item_id: string; qty: number; unit_price: number; item: { code: string; name_ar: string; base_unit_name: string } | null; }
-interface ReturnedRow { item_id: string; qty: number; sales_returns: { status: string; sales_invoice_id: string } }
+interface InvLine { id: string; item_id: string; qty: number; unit_price: number; item: { code: string; name_ar: string; base_unit_name: string } | null; }
+interface ReturnedRow { sales_invoice_line_id: string; qty: number; sales_returns: { status: string; sales_invoice_id: string } }
 interface AccOpt { id: string; code: string; name_ar: string; }
 
 export default function SalesReturnNew() {
@@ -52,7 +52,7 @@ export default function SalesReturnNew() {
     enabled: !!invoiceId,
     queryFn: async (): Promise<InvLine[]> => {
       const { data, error } = await supabase.from('sales_invoice_lines')
-        .select('item_id, qty, unit_price, item:item_id(code, name_ar, base_unit_name)')
+        .select('id, item_id, qty, unit_price, item:item_id(code, name_ar, base_unit_name)')
         .eq('invoice_id', invoiceId);
       if (error) throw error;
       return data as unknown as InvLine[];
@@ -64,7 +64,7 @@ export default function SalesReturnNew() {
     enabled: !!invoiceId,
     queryFn: async (): Promise<ReturnedRow[]> => {
       const { data, error } = await supabase.from('sales_return_lines')
-        .select('item_id, qty, sales_returns!inner(status, sales_invoice_id)')
+        .select('sales_invoice_line_id, qty, sales_returns!inner(status, sales_invoice_id)')
         .eq('sales_returns.sales_invoice_id', invoiceId).eq('sales_returns.status', 'posted');
       if (error) throw error;
       return data as unknown as ReturnedRow[];
@@ -81,20 +81,20 @@ export default function SalesReturnNew() {
 
   const remaining = useMemo(() => {
     const already = new Map<string, number>();
-    for (const r of returnedRows ?? []) already.set(r.item_id, (already.get(r.item_id) ?? 0) + Number(r.qty));
+    for (const r of returnedRows ?? []) already.set(r.sales_invoice_line_id, (already.get(r.sales_invoice_line_id) ?? 0) + Number(r.qty));
     const m = new Map<string, number>();
-    for (const l of lines ?? []) m.set(l.item_id, Number(l.qty) - (already.get(l.item_id) ?? 0));
+    for (const l of lines ?? []) m.set(l.id, Number(l.qty) - (already.get(l.id) ?? 0));
     return m;
   }, [lines, returnedRows]);
 
   async function submit() {
     setErr(null);
     const rows = (lines ?? [])
-      .map((l) => ({ item_id: l.item_id, qty: parseFloat(qtys[l.item_id] || '0') || 0 }))
+      .map((l) => ({ invoice_line_id: l.id, qty: parseFloat(qtys[l.id] || '0') || 0 }))
       .filter((r) => r.qty > 0);
     if (rows.length === 0) return setErr('أدخل كمية للإرجاع في صنف واحد على الأقل');
     for (const r of rows) {
-      const max = remaining.get(r.item_id) ?? 0;
+      const max = remaining.get(r.invoice_line_id) ?? 0;
       if (r.qty > max) return setErr(`الكمية المطلوب إرجاعها أكبر من المتاح (${fmtMoney(max)})`);
     }
     if (paymentMethod === 'cash' && !cashAccountId) return setErr('اختر حساب الصندوق/البنك لرد النقدية');
@@ -149,9 +149,9 @@ export default function SalesReturnNew() {
             </thead>
             <tbody>
               {lines?.map((l) => {
-                const max = remaining.get(l.item_id) ?? 0;
+                const max = remaining.get(l.id) ?? 0;
                 return (
-                  <tr key={l.item_id}>
+                  <tr key={l.id}>
                     <td>{l.item?.code} · {l.item?.name_ar}</td>
                     <td className="num">{fmtMoney(l.qty)} {l.item?.base_unit_name}</td>
                     <td className="num">{fmtMoney(l.unit_price)}</td>
@@ -159,8 +159,8 @@ export default function SalesReturnNew() {
                     <td>
                       <input
                         className="num" inputMode="decimal" disabled={max <= 0}
-                        value={qtys[l.item_id] ?? ''}
-                        onChange={(e) => setQtys((q) => ({ ...q, [l.item_id]: e.target.value }))}
+                        value={qtys[l.id] ?? ''}
+                        onChange={(e) => setQtys((q) => ({ ...q, [l.id]: e.target.value }))}
                         placeholder="0"
                       />
                     </td>

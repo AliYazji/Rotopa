@@ -86,7 +86,7 @@ begin
     'no VAT journal line should exist when tax is disabled';
 
   -- sales return: also posts with no vat account
-  v_ret := create_sales_return(v_org, v_sinv, jsonb_build_array(jsonb_build_object('item_id', v_item, 'qty', 1)));
+  v_ret := create_sales_return(v_org, v_sinv, jsonb_build_array(jsonb_build_object('invoice_line_id', (select id from sales_invoice_lines where invoice_id = v_sinv), 'qty', 1)));
   perform post_sales_return(v_ret);
   select journal_entry_id into v_entry from sales_returns where id = v_ret;
   assert not exists (select 1 from journal_lines where entry_id = v_entry and account_id = v_vat),
@@ -101,7 +101,7 @@ begin
     'no VAT journal line should exist on a purchase invoice when tax is disabled';
 
   -- purchase return: also posts with no vat account
-  v_ret := create_purchase_return(v_org, v_pinv, jsonb_build_array(jsonb_build_object('item_id', v_item, 'qty', 1)));
+  v_ret := create_purchase_return(v_org, v_pinv, jsonb_build_array(jsonb_build_object('invoice_line_id', (select id from purchase_invoice_lines where invoice_id = v_pinv), 'qty', 1)));
   perform post_purchase_return(v_ret);
   select journal_entry_id into v_entry from purchase_returns where id = v_ret;
   assert not exists (select 1 from journal_lines where entry_id = v_entry and account_id = v_vat),

@@ -15,6 +15,7 @@ declare
   v_equity uuid; v_vat_out uuid; v_vat_in uuid;
   v_wh uuid; v_item uuid; v_cust uuid; v_supplier uuid;
   v_sinv uuid; v_pinv uuid; v_sret uuid; v_pret uuid; v_sret_void uuid; v_pret_void uuid;
+  v_sinv_line uuid; v_pinv_line uuid;
 begin
   insert into accounts (org_id, code, name_ar, is_postable, nature) values (v_org,'PAR','أصول',false,'debit') returning id into v_parent;
   insert into accounts (org_id, code, name_ar, parent_id, is_postable, nature) values (v_org,'AR','ذمم عملاء',v_parent,true,'debit') returning id into v_ar;
@@ -47,18 +48,22 @@ begin
     jsonb_build_array(jsonb_build_object('item_id', v_item, 'qty', 10, 'unit_price', 25)));
   perform post_sales_invoice(v_sinv, p_output_vat_account_id := v_vat_out);
   assert item_stock_on_hand(v_item, v_wh) = 90, 'stock should drop to 90 after the sale';
+  v_sinv_line := (select id from sales_invoice_lines where invoice_id = v_sinv);
 
   -- 1) cannot return against a draft/unposted invoice
-  begin
-    perform create_sales_return(v_org, create_sales_invoice(v_org, current_date, v_cust, v_wh,
-      jsonb_build_array(jsonb_build_object('item_id', v_item, 'qty', 1, 'unit_price', 25))),
-      jsonb_build_array(jsonb_build_object('item_id', v_item, 'qty', 1)));
-    raise exception 'TEST FAIL: returned against a draft invoice';
-  exception when sqlstate '23514' then null;
+  declare v_draft_inv uuid; v_draft_line uuid; begin
+    v_draft_inv := create_sales_invoice(v_org, current_date, v_cust, v_wh,
+      jsonb_build_array(jsonb_build_object('item_id', v_item, 'qty', 1, 'unit_price', 25)));
+    v_draft_line := (select id from sales_invoice_lines where invoice_id = v_draft_inv);
+    begin
+      perform create_sales_return(v_org, v_draft_inv, jsonb_build_array(jsonb_build_object('invoice_line_id', v_draft_line, 'qty', 1)));
+      raise exception 'TEST FAIL: returned against a draft invoice';
+    exception when sqlstate '23514' then null;
+    end;
   end;
 
   -- 2) return 4 of the 10 units, credit (reduces AR) — price/cost pulled from the original line, not client-supplied
-  v_sret := create_sales_return(v_org, v_sinv, jsonb_build_array(jsonb_build_object('item_id', v_item, 'qty', 4)));
+  v_sret := create_sales_return(v_org, v_sinv, jsonb_build_array(jsonb_build_object('invoice_line_id', v_sinv_line, 'qty', 4)));
   assert (select unit_price from sales_return_lines where return_id = v_sret) = 25, 'return line price should come from the original invoice line';
   assert (select unit_cost  from sales_return_lines where return_id = v_sret) = 10, 'return line cost should come from the original invoice line';
 
@@ -73,7 +78,7 @@ begin
 
   -- 3) cannot over-return: only 6 units remain returnable (10 - 4 already returned)
   begin
-    perform create_sales_return(v_org, v_sinv, jsonb_build_array(jsonb_build_object('item_id', v_item, 'qty', 7)));
+    perform create_sales_return(v_org, v_sinv, jsonb_build_array(jsonb_build_object('invoice_line_id', v_sinv_line, 'qty', 7)));
     raise exception 'TEST FAIL: over-returned a sales invoice line';
   exception when sqlstate '23514' then null;
   end;
@@ -87,7 +92,7 @@ begin
   assert account_balance(v_vat_out) = -40, 'output VAT should be back to the full original 40';
 
   -- 5) a voided return frees up the quantity again — now returnable in full
-  v_sret := create_sales_return(v_org, v_sinv, jsonb_build_array(jsonb_build_object('item_id', v_item, 'qty', 10)));
+  v_sret := create_sales_return(v_org, v_sinv, jsonb_build_array(jsonb_build_object('invoice_line_id', v_sinv_line, 'qty', 10)));
   perform post_sales_return(v_sret, p_output_vat_account_id := v_vat_out);
   assert account_balance(v_ar) = 0, 'AR should net to zero once the whole invoice has been returned';
   assert item_stock_on_hand(v_item, v_wh) = 100, 'all 10 units should be back in stock';
@@ -107,9 +112,10 @@ begin
     jsonb_build_array(jsonb_build_object('item_id', v_item, 'qty', 20, 'unit_price', 12)));
   perform post_purchase_invoice(v_pinv, v_vat_in);
   assert item_stock_on_hand(v_item, v_wh) = 120, 'stock should rise to 120 (100 + 20 purchased)';
+  v_pinv_line := (select id from purchase_invoice_lines where invoice_id = v_pinv);
 
   -- 7) cash purchase return: 5 units back to the supplier, refunded to cash
-  v_pret := create_purchase_return(v_org, v_pinv, jsonb_build_array(jsonb_build_object('item_id', v_item, 'qty', 5)),
+  v_pret := create_purchase_return(v_org, v_pinv, jsonb_build_array(jsonb_build_object('invoice_line_id', v_pinv_line, 'qty', 5)),
     p_payment_method := 'cash', p_cash_account_id := v_cash);
   perform post_purchase_return(v_pret, v_vat_in);
   assert (select status from purchase_returns where id = v_pret) = 'posted', 'purchase return should be posted';
@@ -121,7 +127,7 @@ begin
 
   -- 8) cannot over-return a purchase line either
   begin
-    perform create_purchase_return(v_org, v_pinv, jsonb_build_array(jsonb_build_object('item_id', v_item, 'qty', 16)));
+    perform create_purchase_return(v_org, v_pinv, jsonb_build_array(jsonb_build_object('invoice_line_id', v_pinv_line, 'qty', 16)));
     raise exception 'TEST FAIL: over-returned a purchase invoice line';
   exception when sqlstate '23514' then null;
   end;
@@ -139,7 +145,7 @@ begin
   exception when sqlstate '23514' then null;
   end;
   begin
-    perform post_purchase_return(create_purchase_return(v_org, v_pinv, jsonb_build_array(jsonb_build_object('item_id', v_item, 'qty', 1))));
+    perform post_purchase_return(create_purchase_return(v_org, v_pinv, jsonb_build_array(jsonb_build_object('invoice_line_id', v_pinv_line, 'qty', 1))));
     raise exception 'TEST FAIL: posted a purchase return with no input VAT account';
   exception when sqlstate '23514' then null;
   end;

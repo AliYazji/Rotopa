@@ -86,4 +86,103 @@ else
   echo "--- attempt B full output ---"; cat /tmp/attempt_b.out
 fi
 rm -f /tmp/attempt_a.out /tmp/attempt_b.out
-exit $FAIL
+
+echo "── fixture #2: a 10-unit invoice line with two pre-created 8-unit draft returns ──"
+RUN -v ON_ERROR_STOP=1 -q < supabase/tests/concurrency/setup_returns.sql
+
+echo "── launching two concurrent posts of those two draft returns ──"
+RUN < supabase/tests/concurrency/attempt_return_a.sql > /tmp/attempt_ra.out 2>&1 &
+PID_RA=$!
+RUN < supabase/tests/concurrency/attempt_return_b.sql > /tmp/attempt_rb.out 2>&1 &
+PID_RB=$!
+wait "$PID_RA" "$PID_RB"
+
+RESULT_RA=$(grep -o 'RESULT: [a-z_]*' /tmp/attempt_ra.out || echo "RESULT: NONE")
+RESULT_RB=$(grep -o 'RESULT: [a-z_]*' /tmp/attempt_rb.out || echo "RESULT: NONE")
+echo "  return A: $RESULT_RA"
+echo "  return B: $RESULT_RB"
+
+FINAL_RETURNED=$(RUN -t -A -c "
+  select coalesce(sum(l.qty), 0)
+  from sales_return_lines l join sales_returns r on r.id = l.return_id
+  where l.sales_invoice_line_id = (select v from concurrency_handshake where k = 'ret_invoice_line_id')
+    and r.status = 'posted';
+" | tr -d '[:space:]')
+echo "  final posted-returned qty: $FINAL_RETURNED"
+
+FAIL2=0
+SUCCESSES2=$(printf '%s\n%s\n' "$RESULT_RA" "$RESULT_RB" | grep -c 'RESULT: success' || true)
+REJECTIONS2=$(printf '%s\n%s\n' "$RESULT_RA" "$RESULT_RB" | grep -c 'RESULT: over_return' || true)
+
+if [ "$SUCCESSES2" -ne 1 ]; then
+  echo "  ✗ expected exactly 1 successful return post, got $SUCCESSES2 — an over-return race would show 2"
+  FAIL2=1
+fi
+if [ "$REJECTIONS2" -ne 1 ]; then
+  echo "  ✗ expected exactly 1 over_return rejection, got $REJECTIONS2"
+  FAIL2=1
+fi
+if [ "$FINAL_RETURNED" != "8.0000" ]; then
+  echo "  ✗ expected final posted-returned qty to be exactly 8 (not 16), got $FINAL_RETURNED"
+  FAIL2=1
+fi
+
+if [ "$FAIL2" -eq 0 ]; then
+  echo "✓ CONCURRENCY: SALES RETURN OVER-RETURN GUARD HOLDS UNDER REAL CONCURRENT ACCESS"
+else
+  echo "✗ RETURN CONCURRENCY TEST FAILED — see output above"
+  echo "--- return A full output ---"; cat /tmp/attempt_ra.out
+  echo "--- return B full output ---"; cat /tmp/attempt_rb.out
+fi
+rm -f /tmp/attempt_ra.out /tmp/attempt_rb.out
+
+echo "── fixture #3: a posted invoice with a draft return already against it ──"
+RUN -v ON_ERROR_STOP=1 -q < supabase/tests/concurrency/setup_void_vs_return.sql
+
+echo "── launching a concurrent post-the-return vs void-the-invoice race ──"
+RUN < supabase/tests/concurrency/attempt_post_return.sql > /tmp/attempt_pr.out 2>&1 &
+PID_PR=$!
+RUN < supabase/tests/concurrency/attempt_void_invoice.sql > /tmp/attempt_vi.out 2>&1 &
+PID_VI=$!
+wait "$PID_PR" "$PID_VI"
+
+RESULT_PR=$(grep -o 'RESULT: [a-z_]*' /tmp/attempt_pr.out || echo "RESULT: NONE")
+RESULT_VI=$(grep -o 'RESULT: [a-z_]*' /tmp/attempt_vi.out || echo "RESULT: NONE")
+echo "  post return:  $RESULT_PR"
+echo "  void invoice: $RESULT_VI"
+
+INVOICE_STATUS=$(RUN -t -A -c "select status from sales_invoices where id = (select v from concurrency_handshake where k = 'vr_invoice_id');" | tr -d '[:space:]')
+RETURN_STATUS=$(RUN -t -A -c "select status from sales_returns where id = (select v from concurrency_handshake where k = 'vr_return_id');" | tr -d '[:space:]')
+echo "  final invoice status: $INVOICE_STATUS | final return status: $RETURN_STATUS"
+
+FAIL3=0
+SUCCESSES3=$(printf '%s\n%s\n' "$RESULT_PR" "$RESULT_VI" | grep -c 'RESULT: success' || true)
+REJECTIONS3=$(printf '%s\n%s\n' "$RESULT_PR" "$RESULT_VI" | grep -c 'RESULT: rejected' || true)
+
+if [ "$SUCCESSES3" -ne 1 ]; then
+  echo "  ✗ expected exactly 1 success (either the return posts or the invoice voids, never both), got $SUCCESSES3"
+  FAIL3=1
+fi
+if [ "$REJECTIONS3" -ne 1 ]; then
+  echo "  ✗ expected exactly 1 rejection, got $REJECTIONS3"
+  FAIL3=1
+fi
+# self-consistency: never "invoice void AND return posted" at once, in either winning order
+if [ "$INVOICE_STATUS" = "void" ] && [ "$RETURN_STATUS" = "posted" ]; then
+  echo "  ✗ inconsistent final state: invoice is void but its return is posted"
+  FAIL3=1
+fi
+
+if [ "$FAIL3" -eq 0 ]; then
+  echo "✓ CONCURRENCY: VOID-VS-RETURN INTERPLAY GUARD HOLDS UNDER REAL CONCURRENT ACCESS"
+else
+  echo "✗ VOID-VS-RETURN CONCURRENCY TEST FAILED — see output above"
+  echo "--- post-return full output ---"; cat /tmp/attempt_pr.out
+  echo "--- void-invoice full output ---"; cat /tmp/attempt_vi.out
+fi
+rm -f /tmp/attempt_pr.out /tmp/attempt_vi.out
+
+if [ "$FAIL" -ne 0 ] || [ "$FAIL2" -ne 0 ] || [ "$FAIL3" -ne 0 ]; then
+  exit 1
+fi
+exit 0

@@ -114,7 +114,7 @@ begin
   -- =========================================================================
   -- 7) the customer returns 5 of the 30 units sold
   -- =========================================================================
-  v_return := create_sales_return(v_org, v_sinv, jsonb_build_array(jsonb_build_object('item_id', v_item, 'qty', 5)));
+  v_return := create_sales_return(v_org, v_sinv, jsonb_build_array(jsonb_build_object('invoice_line_id', (select id from sales_invoice_lines where invoice_id = v_sinv), 'qty', 5)));
   perform post_sales_return(v_return, p_output_vat_account_id := v_vat_out);
   assert item_stock_on_hand(v_item, v_wh) = 75, 'the 5 returned units should come back into stock (70 + 5)';
 
@@ -139,7 +139,9 @@ begin
       (select base_currency_id from organizations where id = v_org),
       jsonb_build_array(jsonb_build_object('account_id', v_ar, 'amount', 1, 'dealer_id', v_cust)));
     perform post_voucher(v_blocked_voucher);
-    raise exception 'TEST FAIL: posted a voucher into a closed period';
+    -- distinct errcode so this can never collide with the guard's own
+    -- default P0001
+    raise exception 'TEST FAIL: posted a voucher into a closed period' using errcode = '99001';
   exception when sqlstate 'P0001' then null;
   end;
   perform reopen_fiscal_period(v_period_id, 'استكمال اختبار شامل بعد الإقفال التجريبي');
