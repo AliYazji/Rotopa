@@ -271,7 +271,7 @@ async function inventorySection(client: pg.PoolClient, orgId: string) {
     [orgId],
   )).rows;
 
-  console.log(`  inventory: ${materialDiffs.length} account(s) with GL != sub-ledger (>0.01), ${negQty.rows?.length ?? negQty.length} negative-qty rows, ${negValue.rows?.length ?? negValue.length} negative-avg-cost rows`);
+  console.log(`  inventory: ${materialDiffs.length} account(s) with GL != sub-ledger (>0.01), ${negQty.length} negative-qty rows, ${negValue.length} negative-avg-cost rows`);
   for (const d of materialDiffs) console.log(`    ${d.code} ${d.name_ar}: GL=${d.gl_value} sub-ledger=${d.subledger_value} diff=${d.diff}`);
 
   // purchase-return drift the new cost-consistency migration cannot retroactively fix:
